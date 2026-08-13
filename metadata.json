@@ -1,0 +1,10 @@
+{
+  "name": "Smart Canteiro CQ",
+  "description": "Sistema de Controle de Qualidade de sementes, avaliação de canteiros, fotos e relatórios.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

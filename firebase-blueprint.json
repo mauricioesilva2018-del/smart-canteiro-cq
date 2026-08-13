@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "amostras": {
+      "title": "Amostras de Canteiro",
+      "description": "Registros de canteiros e testes de germinação de lotes",
+      "type": "collection",
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    },
+    "avaliacoes": {
+      "title": "Avaliações de Germinação",
+      "description": "Leituras e contagens de germinação das amostras",
+      "type": "collection",
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    },
+    "fotos": {
+      "title": "Fotos de Acompanhamento",
+      "description": "Fotos capturadas para cada amostra de canteiro",
+      "type": "collection",
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    },
+    "configuracoes": {
+      "title": "Configurações de Qualidade",
+      "description": "Percentual mínimo de germinação por cultura",
+      "type": "collection",
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    },
+    "usuarios": {
+      "title": "Usuários do Sistema",
+      "description": "Perfil e dados dos usuários autenticados",
+      "type": "collection",
+      "rules": {
+        "read": "request.auth != null",
+        "write": "request.auth != null"
+      }
+    }
+  }
+}
