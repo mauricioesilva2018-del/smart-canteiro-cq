@@ -138,8 +138,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => exportService.exportToExcel(filteredAmostras)}
-            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-sm transition-all"
+            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
             title="Exportar para Excel"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -147,8 +148,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={onNewSample}
-            className="flex items-center gap-1.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all"
+            className="flex items-center gap-1.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>+ Nova Amostra</span>
@@ -172,8 +174,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
             />
             {searchQuery && (
               <button 
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
               >
                 Limpar
               </button>
@@ -182,8 +185,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
           {/* Toggle Filtros Avançados */}
           <button
+            type="button"
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all whitespace-nowrap ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all whitespace-nowrap cursor-pointer ${
               showAdvancedFilters || filterStatus || filterCultura
                 ? 'bg-[#2d6a4f] text-white border-[#1b4332]'
                 : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
@@ -195,8 +199,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
           {(searchQuery || filterProtocolo || filterLote || filterCultivar || filterCultura || filterCategoria || filterSafra || filterStatus || filterDataInicio) && (
             <button
+              type="button"
               onClick={resetFilters}
-              className="text-xs font-semibold text-rose-600 hover:underline px-2 py-1"
+              className="text-xs font-semibold text-rose-600 hover:underline px-2 py-1 cursor-pointer"
             >
               Limpar Filtros
             </button>
@@ -400,6 +405,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                             
                             {/* Botão Editar Amostra */}
                             <button
+                              type="button"
                               onClick={() => setEditingAmostra(amostra)}
                               className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#1b4332] border border-emerald-200 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold cursor-pointer"
                               title="Editar Amostra"
@@ -410,16 +416,18 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
                             {/* Botão Avaliar */}
                             <button
+                              type="button"
                               onClick={() => onOpenAvaliacao(amostra.id)}
                               className="px-2.5 py-1.5 bg-[#2d6a4f] hover:bg-[#1b4332] text-white rounded-lg font-bold text-[11px] flex items-center gap-1 shadow-xs transition-all cursor-pointer"
                               title="Abrir Tela de Avaliação"
                             >
                               <ClipboardCheck className="w-3.5 h-3.5" />
-                              <span>{isConcluido ? 'AVALIAR' : 'AVALIAR'}</span>
+                              <span>AVALIAR</span>
                             </button>
 
                             {/* Botão Laudo PDF */}
                             <button
+                              type="button"
                               onClick={() => {
                                 const fotos = storageService.getFotosByAmostra(amostra.id);
                                 exportService.generateSamplePDF(amostra, avaliacao, fotos);
@@ -432,6 +440,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
                             {/* Botão Excluir */}
                             <button
+                              type="button"
                               onClick={() => setItemToDelete({ id: amostra.id, name: amostra.protocolo })}
                               className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold cursor-pointer"
                               title="Excluir Amostra"
@@ -464,8 +473,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                         <div className="flex items-center gap-2">
                           <span className="font-black text-gray-900 text-base">{amostra.protocolo}</span>
                           <button
+                            type="button"
                             onClick={() => onShowQRCode(amostra)}
-                            className="p-1 bg-gray-100 rounded text-gray-600"
+                            className="p-1 bg-gray-100 rounded text-gray-600 cursor-pointer"
                           >
                             <QrCode className="w-4 h-4" />
                           </button>
@@ -505,17 +515,19 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                     <div className="flex items-center justify-between pt-1">
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => {
                             const fotos = storageService.getFotosByAmostra(amostra.id);
                             exportService.generateSamplePDF(amostra, avaliacao, fotos);
                           }}
-                          className="text-xs font-bold text-gray-600 flex items-center gap-1 hover:underline"
+                          className="text-xs font-bold text-gray-600 flex items-center gap-1 hover:underline cursor-pointer"
                         >
                           <FileText className="w-4 h-4 text-rose-600" />
                           Laudo PDF
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => setEditingAmostra(amostra)}
                           className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-[#1b4332] border border-emerald-200 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer"
                         >
@@ -524,6 +536,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => setItemToDelete({ id: amostra.id, name: amostra.protocolo })}
                           className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer"
                         >
@@ -533,8 +546,9 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => onOpenAvaliacao(amostra.id)}
-                        className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                        className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                       >
                         <ClipboardCheck className="w-4 h-4 text-[#d8f3dc]" />
                         <span>{isConcluido ? 'Ver Avaliação' : 'Iniciar Avaliação'}</span>
