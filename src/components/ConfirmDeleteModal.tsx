@@ -26,6 +26,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-100 space-y-5 relative">
         <button
+          type="button"
           onClick={onCancel}
           disabled={isDeleting}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1.5 rounded-lg transition-colors cursor-pointer"

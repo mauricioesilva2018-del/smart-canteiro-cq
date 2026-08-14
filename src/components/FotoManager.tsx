@@ -146,7 +146,9 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
                 <div className="flex items-center justify-end gap-1">
                   {!readOnly && (
                     <button
+                      type="button"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         setFotoToDelete(foto);
                       }}
@@ -180,7 +182,11 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
           <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
             
             <button
-              onClick={() => setActiveZoomFoto(null)}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveZoomFoto(null);
+              }}
               className="absolute -top-12 right-0 p-2 text-white bg-white/20 hover:bg-white/40 rounded-full transition-colors"
             >
               <X className="w-6 h-6" />
