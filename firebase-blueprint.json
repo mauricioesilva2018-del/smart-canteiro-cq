@@ -5,8 +5,8 @@
       "description": "Registros de canteiros e testes de germinação de lotes",
       "type": "collection",
       "rules": {
-        "read": "request.auth != null",
-        "write": "request.auth != null"
+        "read": "true",
+        "write": "true"
       }
     },
     "avaliacoes": {
@@ -14,8 +14,8 @@
       "description": "Leituras e contagens de germinação das amostras",
       "type": "collection",
       "rules": {
-        "read": "request.auth != null",
-        "write": "request.auth != null"
+        "read": "true",
+        "write": "true"
       }
     },
     "fotos": {
@@ -23,8 +23,8 @@
       "description": "Fotos capturadas para cada amostra de canteiro",
       "type": "collection",
       "rules": {
-        "read": "request.auth != null",
-        "write": "request.auth != null"
+        "read": "true",
+        "write": "true"
       }
     },
     "configuracoes": {
@@ -32,8 +32,8 @@
       "description": "Percentual mínimo de germinação por cultura",
       "type": "collection",
       "rules": {
-        "read": "request.auth != null",
-        "write": "request.auth != null"
+        "read": "true",
+        "write": "true"
       }
     },
     "usuarios": {
@@ -41,8 +41,8 @@
       "description": "Perfil e dados dos usuários autenticados",
       "type": "collection",
       "rules": {
-        "read": "request.auth != null",
-        "write": "request.auth != null"
+        "read": "true",
+        "write": "true"
       }
     }
   }

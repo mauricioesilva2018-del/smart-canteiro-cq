@@ -66,18 +66,24 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
         categoria,
         safra,
         dataSemeadura,
-        responsavel,
-        observacoes: observacoes.trim(),
-        quantidadeSementes,
-        tsiMatriz,
-        dataLeitura7dias,
-        dataLeitura10dias,
+        responsavel: responsavel || currentUser?.nome || 'Operador',
+        observacoes: observacoes ? observacoes.trim() : '',
+        quantidadeSementes: quantidadeSementes || 100,
+        tsiMatriz: tsiMatriz || '',
+        dataLeitura7dias: dataLeitura7dias || '',
+        dataLeitura10dias: dataLeitura10dias || '',
       };
 
       const saved = await storageService.saveAmostra(payload);
       onSuccess(saved);
-    } catch (err) {
-      setErrorMsg('Erro ao salvar amostra. Tente novamente.');
+    } catch (err: any) {
+      console.error('Erro original retornado pelo Firebase ao salvar amostra:', {
+        code: err?.code || 'NO_CODE',
+        message: err?.message || String(err),
+        errorObject: err,
+      });
+      const errCode = err?.code ? ` [${err.code}]` : '';
+      setErrorMsg(`Erro ao salvar amostra${errCode}: ${err?.message || 'Falha na comunicação com o banco de dados.'}`);
     }
   };
 
