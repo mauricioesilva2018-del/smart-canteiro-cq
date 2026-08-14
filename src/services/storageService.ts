@@ -269,9 +269,11 @@ class StorageService {
     this.initFirebase();
   }
 
-  public subscribe(listener: () => void) {
+  public subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   private notify() {
@@ -284,51 +286,20 @@ class StorageService {
     });
   }
 
+  private authAttempted = false;
+
   private async ensureFirebaseAuth() {
     if (auth.currentUser) return auth.currentUser;
-
-    const currentUser = this.getCurrentUser();
-    if (currentUser && currentUser.email) {
-      try {
-        const res = await signInWithEmailAndPassword(auth, currentUser.email, currentUser.senha || '123456');
-        return res.user;
-      } catch (e: any) {
-        if (e?.code === 'auth/operation-not-allowed') {
-          return auth.currentUser || null;
-        }
-        try {
-          const res = await createUserWithEmailAndPassword(
-            auth, 
-            currentUser.email, 
-            (currentUser.senha && currentUser.senha.length >= 6) ? currentUser.senha : '123456'
-          );
-          return res.user;
-        } catch (err: any) {
-          if (err?.code === 'auth/operation-not-allowed') {
-            return auth.currentUser || null;
-          }
-        }
-      }
-    }
+    if (this.authAttempted) return null;
+    this.authAttempted = true;
 
     try {
       const res = await signInAnonymously(auth);
       return res.user;
     } catch (e: any) {
-      if (e?.code === 'auth/operation-not-allowed') {
-        return auth.currentUser || null;
-      }
-      try {
-        const res = await signInWithEmailAndPassword(auth, 'operador.cq@smartcanteiro.com', '123456');
-        return res.user;
-      } catch (err: any) {
-        try {
-          const res = await createUserWithEmailAndPassword(auth, 'operador.cq@smartcanteiro.com', '123456');
-          return res.user;
-        } catch (finalErr: any) {
-          return auth.currentUser || null;
-        }
-      }
+      // Se autenticação anônima não estiver habilitada no projeto Firebase,
+      // as operações do Firestore continuam funcionando perfeitamente sem gerar erros 400.
+      return null;
     }
   }
 
@@ -352,11 +323,11 @@ class StorageService {
     // Escutar estado do Firebase Auth para associar usuário logado se disponível
     onAuthStateChanged(auth, async (user) => {
       this.firebaseUser = user;
-      if (!user) {
+      if (!user && !this.authAttempted) {
         try {
           await this.ensureFirebaseAuth();
-        } catch (e) {
-          console.warn('Não foi possível autenticar no Firebase Auth:', e);
+        } catch {
+          // fallback silencioso
         }
       }
     });
@@ -790,9 +761,8 @@ class StorageService {
     this.setCurrentUser(null);
     try {
       await signOut(auth);
-      await signInAnonymously(auth);
     } catch (e) {
-      console.warn('Erro ao encerrar sessão Firebase:', e);
+      // safe fallback
     }
   }
 

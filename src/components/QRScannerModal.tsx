@@ -23,6 +23,7 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
     if (!useCameraScanner) return;
 
     let scanner: Html5QrcodeScanner | null = null;
+    let isMounted = true;
 
     try {
       scanner = new Html5QrcodeScanner(
@@ -33,30 +34,46 @@ export const QRScannerModal: React.FC<QRScannerModalProps> = ({
 
       scanner.render(
         (decodedText) => {
+          if (!isMounted) return;
           // Quando lê um QR Code
           const found = amostras.find(
             a => a.protocolo.toLowerCase() === decodedText.toLowerCase() || a.id === decodedText
           );
 
           if (found) {
-            scanner?.clear();
+            try {
+              const res = scanner?.clear();
+              if (res && typeof res.catch === 'function') {
+                res.catch(() => {});
+              }
+            } catch (e) {
+              // ignore
+            }
             onSelectAmostra(found.id);
           } else {
             setScanError(`Protocolo "${decodedText}" não encontrado no sistema.`);
           }
         },
-        (error) => {
+        () => {
           // Ignora erros normais de frame sem QR code
         }
       );
     } catch (err) {
       console.error('Erro ao iniciar câmera QR:', err);
-      setUseCameraScanner(false);
+      if (isMounted) {
+        setUseCameraScanner(false);
+      }
     }
 
     return () => {
+      isMounted = false;
       try {
-        scanner?.clear();
+        const res = scanner?.clear();
+        if (res && typeof res.catch === 'function') {
+          res.catch((e) => {
+            console.warn('Limpeza de scanner QR tratada com segurança:', e);
+          });
+        }
       } catch (e) {
         // cleanup
       }
