@@ -255,8 +255,8 @@ const INITIAL_AVALIACOES: Avaliacao[] = [
 ];
 
 class StorageService {
-  private amostras: Amostra[] = [];
-  private avaliacoes: Avaliacao[] = [];
+  private amostras: Amostra[] = INITIAL_AMOSTRAS;
+  private avaliacoes: Avaliacao[] = INITIAL_AVALIACOES;
   private fotos: FotoAmostra[] = [];
   private configuracoes: ConfiguracaoAprovacao[] = DEFAULT_CONFIGS;
   private usuarios: Usuario[] = DEFAULT_USERS;

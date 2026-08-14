@@ -7,9 +7,9 @@ import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
 import { 
-  ArrowLeft, CheckCircle2, AlertTriangle, Save, FileText, 
-  Plus, Minus, Clock, ShieldCheck, ShieldAlert, Award, Camera, Sprout, Trash2,
-  CheckCheck, X
+  ArrowLeft, Save, FileText, 
+  Clock, ShieldCheck, ShieldAlert, Camera, Sprout, Trash2,
+  CheckCheck
 } from 'lucide-react';
 
 interface AvaliacaoViewProps {
@@ -69,15 +69,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
   if (!amostra) {
     return (
-      <div className="p-8 text-center bg-white rounded-2xl border border-gray-100 shadow-sm">
+      <div id="view-amostra-nao-encontrada" className="p-8 text-center bg-white rounded-2xl border border-gray-100 shadow-sm max-w-xl mx-auto my-8">
         <p className="text-gray-700 font-bold text-base">Amostra de Canteiro não encontrada.</p>
         <button
           type="button"
           onClick={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             onBack();
           }}
-          className="mt-4 px-5 py-2.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white font-bold text-sm rounded-xl transition-all shadow-sm"
+          className="mt-4 px-5 py-2.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white font-bold text-sm rounded-xl transition-all shadow-sm cursor-pointer"
         >
           Voltar para Lista
         </button>
@@ -98,13 +99,13 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
   const hasAnyData = (fortes > 0 || intermediarias > 0 || fracas > 0 || anormais > 0 || mortas > 0 || observacoes.trim().length > 0);
 
   // Cálculos Automáticos de Germinação
-  const totalContado = fortes + intermediarias + fracas + anormais + mortas;
+  const totalContado = (Number(fortes) || 0) + (Number(intermediarias) || 0) + (Number(fracas) || 0) + (Number(anormais) || 0) + (Number(mortas) || 0);
   const isExact100 = totalContado === 100;
 
-  const totalGerminado = fortes + intermediarias + fracas;
+  const totalGerminado = (Number(fortes) || 0) + (Number(intermediarias) || 0) + (Number(fracas) || 0);
   const percentualGerminacao = totalGerminado;
-  const percentualAnormais = anormais;
-  const percentualMortas = mortas;
+  const percentualAnormais = Number(anormais) || 0;
+  const percentualMortas = Number(mortas) || 0;
 
   // Aprovação Automática com Base na Cultura
   const minGermina = storageService.getMinGerminationForCultura(amostra.cultura);
@@ -115,7 +116,22 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
     setter: React.Dispatch<React.SetStateAction<number>>,
     delta: number
   ) => {
-    setter(prev => Math.max(0, (Number(prev) || 0) + delta));
+    setter(prev => Math.max(0, Math.min(100, (Number(prev) || 0) + delta)));
+  };
+
+  // Manipulador de Digitação Segura nos Campos de Contagem
+  const handleNumberChange = (
+    raw: string,
+    setter: React.Dispatch<React.SetStateAction<number>>
+  ) => {
+    if (raw === '') {
+      setter(0);
+      return;
+    }
+    const val = parseInt(raw, 10);
+    if (!isNaN(val)) {
+      setter(Math.max(0, Math.min(100, val)));
+    }
   };
 
   // Tratar Clique em Cancelar / Voltar com Confirmação
@@ -270,19 +286,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
   };
 
   return (
-    <form 
-      id="form-avaliacao-canteiro"
-      onSubmit={(e) => {
-        e.preventDefault();
-      }}
-      noValidate
-      className="space-y-6 max-w-4xl mx-auto"
+    <div 
+      id="view-avaliacao-canteiro"
+      className="space-y-6 max-w-4xl mx-auto pb-12"
     >
       
       {/* Top Nav & Action Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
+          id="btn-voltar-avaliacao-lista"
           onClick={handleBackRequest}
           className="flex items-center gap-2 text-xs font-bold text-[#1b4332] hover:text-[#2d6a4f] bg-white px-3.5 py-2.5 rounded-xl border border-gray-200 shadow-xs transition-all cursor-pointer"
         >
@@ -294,8 +307,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
           {existingAvaliacao && (
             <button
               type="button"
+              id="btn-gerar-laudo-pdf"
               onClick={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 const fotos = storageService.getFotosByAmostra(amostra.id);
                 exportService.generateSamplePDF(amostra, existingAvaliacao, fotos);
               }}
@@ -309,6 +324,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
           {/* Botão Salvar (Mantém na tela) */}
           <button
             type="button"
+            id="btn-salvar-avaliacao-draft"
             onClick={handleSaveDraft}
             disabled={!isExact100 || isSaving}
             className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all ${
@@ -325,6 +341,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
           {/* Botão Finalizar Avaliação (Com Confirmação) */}
           <button
             type="button"
+            id="btn-finalizar-avaliacao-abrir-modal"
             onClick={handleOpenFinalizeModal}
             disabled={!isExact100 || isFinalizing}
             className={`flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all ${
@@ -341,7 +358,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       </div>
 
       {/* Cartão de Identificação do Canteiro */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-3">
+      <div id="card-identificacao-canteiro" className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
           <div>
             <div className="flex items-center gap-2">
@@ -380,8 +397,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       <div className="flex bg-gray-200 p-1 rounded-xl">
         <button
           type="button"
+          id="btn-tab-contagem"
           onClick={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setActiveTab('contagem');
           }}
           className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
@@ -394,8 +413,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
         <button
           type="button"
+          id="btn-tab-fotos"
           onClick={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             setActiveTab('fotos');
           }}
           className={`flex-1 py-2 text-xs sm:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
@@ -409,7 +430,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
       {/* CONTEÚDO TAB 1: LEITURA DE GERMINAÇÃO */}
       {activeTab === 'contagem' && (
-        <div className="space-y-6">
+        <div id="painel-contagem-plantulas" className="space-y-6">
           
           {/* BANNER DE VALIDAÇÃO E CONTADOR EM TEMPO REAL (REGRA 100 SEMENTES) */}
           <div className={`p-4 rounded-2xl border-2 transition-all shadow-sm ${
@@ -442,7 +463,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
                   <p className="text-sm font-black mt-1">
                     {isExact100 && `Total: 100/100 ✅ — Germinação = ${percentualGerminacao}% | Anormais = ${percentualAnormais}% | Mortas = ${percentualMortas}%`}
-                    {totalContado > 100 && `Total excede 100 sementes. Ajuste os valores antes de salvar.`}
+                    {totalContado > 100 && `Total excede 100 sementes (${totalContado}/100). Ajuste os valores antes de salvar.`}
                     {totalContado < 100 && `Faltam ${100 - totalContado} sementes para completar a avaliação.`}
                   </p>
                   
@@ -511,7 +532,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
           </div>
 
-          {/* CAMPOS NUMÉRICOS DE LEITURA (CAMPO RÁPIDO) */}
+          {/* CAMPOS NUMÉRICOS DE LEITURA (5 CATEGORIAS) */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-5">
             <h3 className="text-base font-bold text-gray-900 border-b border-gray-100 pb-2">
               Leitura de Canteiro (5 Categorias)
@@ -522,15 +543,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               {/* 1. Plantas Fortes */}
               <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-extrabold text-sm text-emerald-950">P. FORTES</label>
+                  <label htmlFor="input-contagem-fortes" className="font-extrabold text-sm text-emerald-950 cursor-pointer">
+                    P. FORTES
+                  </label>
                   <span className="text-xs font-bold text-emerald-800">Vigorosas</span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    id="btn-decrement-fortes"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setFortes, -1);
                     }}
                     className="w-11 h-11 bg-white border border-emerald-300 rounded-xl font-black text-lg text-emerald-900 hover:bg-emerald-100 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -539,19 +564,33 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                   </button>
 
                   <input
+                    id="input-contagem-fortes"
+                    name="fortes"
                     type="number"
                     min="0"
                     max="100"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={fortes}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                    onChange={(e) => setFortes(Math.max(0, Number(e.target.value) || 0))}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { 
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        e.stopPropagation();
+                      }
+                    }}
+                    onChange={(e) => handleNumberChange(e.target.value, setFortes)}
                     className="flex-1 bg-white border-2 border-emerald-400 rounded-xl py-2 text-center text-2xl font-black text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-600"
                   />
 
                   <button
                     type="button"
+                    id="btn-increment-fortes"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setFortes, 1);
                     }}
                     className="w-11 h-11 bg-emerald-700 text-white rounded-xl font-black text-lg hover:bg-emerald-800 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -563,14 +602,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 <div className="flex items-center justify-center gap-1.5 text-[11px] pt-1">
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setFortes, 5); }} 
+                    id="btn-add5-fortes"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setFortes, 5); }} 
                     className="px-2.5 py-1 bg-emerald-200 hover:bg-emerald-300 text-emerald-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +5
                   </button>
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setFortes, 10); }} 
+                    id="btn-add10-fortes"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setFortes, 10); }} 
                     className="px-2.5 py-1 bg-emerald-200 hover:bg-emerald-300 text-emerald-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +10
@@ -581,15 +622,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               {/* 2. Plantas Intermediárias */}
               <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-extrabold text-sm text-amber-950">P. INTERMEDIÁRIAS</label>
+                  <label htmlFor="input-contagem-intermediarias" className="font-extrabold text-sm text-amber-950 cursor-pointer">
+                    P. INTERMEDIÁRIAS
+                  </label>
                   <span className="text-xs font-bold text-amber-800">Médio Vigor</span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    id="btn-decrement-intermediarias"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setIntermediarias, -1);
                     }}
                     className="w-11 h-11 bg-white border border-amber-300 rounded-xl font-black text-lg text-amber-900 hover:bg-amber-100 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -598,19 +643,33 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                   </button>
 
                   <input
+                    id="input-contagem-intermediarias"
+                    name="intermediarias"
                     type="number"
                     min="0"
                     max="100"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={intermediarias}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                    onChange={(e) => setIntermediarias(Math.max(0, Number(e.target.value) || 0))}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { 
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        e.stopPropagation();
+                      }
+                    }}
+                    onChange={(e) => handleNumberChange(e.target.value, setIntermediarias)}
                     className="flex-1 bg-white border-2 border-amber-400 rounded-xl py-2 text-center text-2xl font-black text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-600"
                   />
 
                   <button
                     type="button"
+                    id="btn-increment-intermediarias"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setIntermediarias, 1);
                     }}
                     className="w-11 h-11 bg-amber-600 text-white rounded-xl font-black text-lg hover:bg-amber-700 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -622,14 +681,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 <div className="flex items-center justify-center gap-1.5 text-[11px] pt-1">
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setIntermediarias, 5); }} 
+                    id="btn-add5-intermediarias"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setIntermediarias, 5); }} 
                     className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +5
                   </button>
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setIntermediarias, 10); }} 
+                    id="btn-add10-intermediarias"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setIntermediarias, 10); }} 
                     className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +10
@@ -640,15 +701,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               {/* 3. Plantas Fracas */}
               <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-extrabold text-sm text-orange-950">P. FRACAS</label>
+                  <label htmlFor="input-contagem-fracas" className="font-extrabold text-sm text-orange-950 cursor-pointer">
+                    P. FRACAS
+                  </label>
                   <span className="text-xs font-bold text-orange-800">Anãs / Tardias</span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    id="btn-decrement-fracas"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setFracas, -1);
                     }}
                     className="w-11 h-11 bg-white border border-orange-300 rounded-xl font-black text-lg text-orange-900 hover:bg-orange-100 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -657,19 +722,33 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                   </button>
 
                   <input
+                    id="input-contagem-fracas"
+                    name="fracas"
                     type="number"
                     min="0"
                     max="100"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={fracas}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                    onChange={(e) => setFracas(Math.max(0, Number(e.target.value) || 0))}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { 
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        e.stopPropagation();
+                      }
+                    }}
+                    onChange={(e) => handleNumberChange(e.target.value, setFracas)}
                     className="flex-1 bg-white border-2 border-orange-400 rounded-xl py-2 text-center text-2xl font-black text-orange-950 focus:outline-none focus:ring-2 focus:ring-orange-600"
                   />
 
                   <button
                     type="button"
+                    id="btn-increment-fracas"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setFracas, 1);
                     }}
                     className="w-11 h-11 bg-orange-600 text-white rounded-xl font-black text-lg hover:bg-orange-700 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -681,14 +760,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 <div className="flex items-center justify-center gap-1.5 text-[11px] pt-1">
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setFracas, 5); }} 
+                    id="btn-add5-fracas"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setFracas, 5); }} 
                     className="px-2.5 py-1 bg-orange-200 hover:bg-orange-300 text-orange-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +5
                   </button>
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setFracas, 10); }} 
+                    id="btn-add10-fracas"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setFracas, 10); }} 
                     className="px-2.5 py-1 bg-orange-200 hover:bg-orange-300 text-orange-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +10
@@ -699,15 +780,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               {/* 4. Plantas Anormais */}
               <div className="p-4 bg-purple-50/60 border border-purple-200 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-extrabold text-sm text-purple-950">P. ANOMALIAS</label>
+                  <label htmlFor="input-contagem-anormais" className="font-extrabold text-sm text-purple-950 cursor-pointer">
+                    P. ANOMALIAS
+                  </label>
                   <span className="text-xs font-bold text-purple-800">Deformadas / Lesionadas</span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    id="btn-decrement-anormais"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setAnormais, -1);
                     }}
                     className="w-11 h-11 bg-white border border-purple-300 rounded-xl font-black text-lg text-purple-900 hover:bg-purple-100 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -716,19 +801,33 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                   </button>
 
                   <input
+                    id="input-contagem-anormais"
+                    name="anormais"
                     type="number"
                     min="0"
                     max="100"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={anormais}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                    onChange={(e) => setAnormais(Math.max(0, Number(e.target.value) || 0))}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { 
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        e.stopPropagation();
+                      }
+                    }}
+                    onChange={(e) => handleNumberChange(e.target.value, setAnormais)}
                     className="flex-1 bg-white border-2 border-purple-400 rounded-xl py-2 text-center text-2xl font-black text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-600"
                   />
 
                   <button
                     type="button"
+                    id="btn-increment-anormais"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setAnormais, 1);
                     }}
                     className="w-11 h-11 bg-purple-700 text-white rounded-xl font-black text-lg hover:bg-purple-800 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -740,14 +839,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 <div className="flex items-center justify-center gap-1.5 text-[11px] pt-1">
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setAnormais, 5); }} 
+                    id="btn-add5-anormais"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setAnormais, 5); }} 
                     className="px-2.5 py-1 bg-purple-200 hover:bg-purple-300 text-purple-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +5
                   </button>
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setAnormais, 10); }} 
+                    id="btn-add10-anormais"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setAnormais, 10); }} 
                     className="px-2.5 py-1 bg-purple-200 hover:bg-purple-300 text-purple-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +10
@@ -758,15 +859,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               {/* 5. Plantas / Sementes Mortas */}
               <div className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-2 sm:col-span-2 lg:col-span-1">
                 <div className="flex items-center justify-between">
-                  <label className="font-extrabold text-sm text-rose-950">P. MORTAS</label>
+                  <label htmlFor="input-contagem-mortas" className="font-extrabold text-sm text-rose-950 cursor-pointer">
+                    P. MORTAS
+                  </label>
                   <span className="text-xs font-bold text-rose-800">Duras / Apodrecidas</span>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    id="btn-decrement-mortas"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setMortas, -1);
                     }}
                     className="w-11 h-11 bg-white border border-rose-300 rounded-xl font-black text-lg text-rose-900 hover:bg-rose-100 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -775,19 +880,33 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                   </button>
 
                   <input
+                    id="input-contagem-mortas"
+                    name="mortas"
                     type="number"
                     min="0"
                     max="100"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={mortas}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                    onChange={(e) => setMortas(Math.max(0, Number(e.target.value) || 0))}
+                    onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => { 
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); 
+                        e.stopPropagation();
+                      }
+                    }}
+                    onChange={(e) => handleNumberChange(e.target.value, setMortas)}
                     className="flex-1 bg-white border-2 border-rose-400 rounded-xl py-2 text-center text-2xl font-black text-rose-950 focus:outline-none focus:ring-2 focus:ring-rose-600"
                   />
 
                   <button
                     type="button"
+                    id="btn-increment-mortas"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       updateCount(setMortas, 1);
                     }}
                     className="w-11 h-11 bg-rose-600 text-white rounded-xl font-black text-lg hover:bg-rose-700 active:scale-95 transition-all shadow-xs cursor-pointer"
@@ -799,14 +918,16 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 <div className="flex items-center justify-center gap-1.5 text-[11px] pt-1">
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setMortas, 5); }} 
+                    id="btn-add5-mortas"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setMortas, 5); }} 
                     className="px-2.5 py-1 bg-rose-200 hover:bg-rose-300 text-rose-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +5
                   </button>
                   <button 
                     type="button" 
-                    onClick={(e) => { e.preventDefault(); updateCount(setMortas, 10); }} 
+                    id="btn-add10-mortas"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateCount(setMortas, 10); }} 
                     className="px-2.5 py-1 bg-rose-200 hover:bg-rose-300 text-rose-900 rounded-lg font-bold transition-colors cursor-pointer"
                   >
                     +10
@@ -818,12 +939,14 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
             {/* Observações da Avaliação */}
             <div className="pt-2">
-              <label className="block text-xs font-bold text-gray-700 mb-1">
+              <label htmlFor="textarea-observacoes" className="block text-xs font-bold text-gray-700 mb-1">
                 Observações Técnicas do Avaliador
               </label>
               <textarea
+                id="textarea-observacoes"
                 rows={3}
                 value={observacoes}
+                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setObservacoes(e.target.value)}
                 placeholder="Descreva sintomas visuais (ex: lesões por fungos, torções radiculares, umidade da areia)..."
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-medium text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
@@ -841,7 +964,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               </div>
             </div>
 
-            {/* Barra de Ações no Rodapé do Form */}
+            {/* Barra de Ações no Rodapé do Painel */}
             <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
               <span className={`text-xs font-extrabold ${isExact100 ? 'text-emerald-800' : 'text-rose-700'}`}>
                 {isExact100 
@@ -853,8 +976,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 {existingAvaliacao && (
                   <button
                     type="button"
+                    id="btn-excluir-avaliacao"
                     onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
                       setShowDeleteModal(true);
                     }}
                     className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -867,6 +992,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
                 <button
                   type="button"
+                  id="btn-salvar-avaliacao-rodape"
                   onClick={handleSaveDraft}
                   disabled={!isExact100 || isSaving}
                   className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 ${
@@ -881,6 +1007,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
                 <button
                   type="button"
+                  id="btn-finalizar-avaliacao-rodape"
                   onClick={handleOpenFinalizeModal}
                   disabled={!isExact100 || isFinalizing}
                   className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 ${
@@ -901,7 +1028,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
       {/* CONTEÚDO TAB 2: REGISTRO DE FOTOS */}
       {activeTab === 'fotos' && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
+        <div id="painel-registro-fotos" className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
           <div>
             <h3 className="text-base font-bold text-gray-900">Fotos Anexadas ao Canteiro</h3>
             <p className="text-xs text-gray-500">Tire fotos diretamente do celular ou selecione da galeria para comprovação do laudo.</p>
@@ -959,6 +1086,6 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         onClose={() => setToast(null)}
       />
 
-    </form>
+    </div>
   );
 };

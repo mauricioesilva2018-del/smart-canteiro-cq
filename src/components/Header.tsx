@@ -51,9 +51,10 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Quick QR Scanner Button */}
           <button
+            type="button"
             id="header-scan-btn"
             onClick={onOpenScanner}
-            className="flex items-center gap-1.5 bg-[#40916c] hover:bg-[#52b788] text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all shadow-sm active:scale-95"
+            className="flex items-center gap-1.5 bg-[#40916c] hover:bg-[#52b788] text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all shadow-sm active:scale-95 cursor-pointer"
             title="Escanear QR Code de Canteiro"
           >
             <QrCode className="w-4 h-4 text-[#d8f3dc]" />
@@ -63,8 +64,9 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Network Mode Toggle / Offline Badge */}
           <div className="flex items-center bg-[#081c15] bg-opacity-40 p-1 rounded-lg border border-[#2d6a4f]">
             <button
+              type="button"
               onClick={() => setIsOnline(!isOnline)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                 isOnline ? 'bg-[#2d6a4f] text-[#d8f3dc]' : 'bg-amber-600 text-white'
               }`}
               title={isOnline ? 'Modo Online (Clique para Simular Offline)' : 'Modo Offline Ativo'}
@@ -85,8 +87,9 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Sync Status Badge */}
             {pendingSyncCount > 0 && (
               <button
+                type="button"
                 onClick={onTriggerSync}
-                className="ml-1.5 flex items-center gap-1 text-xs bg-amber-500/20 text-amber-200 px-2 py-1 rounded hover:bg-amber-500/30 transition-all"
+                className="ml-1.5 flex items-center gap-1 text-xs bg-amber-500/20 text-amber-200 px-2 py-1 rounded hover:bg-amber-500/30 transition-all cursor-pointer"
                 title={`${pendingSyncCount} alterações salvas localmente aguardando sincronização`}
               >
                 <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
@@ -118,8 +121,9 @@ export const Header: React.FC<HeaderProps> = ({
             </select>
 
             <button
+              type="button"
               onClick={onLogout}
-              className="p-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 rounded-md transition-colors flex items-center gap-1 text-xs font-bold"
+              className="p-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 rounded-md transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
               title="Sair da Conta (Logout)"
             >
               <LogOut className="w-3.5 h-3.5" />

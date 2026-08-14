@@ -106,8 +106,9 @@ export default function App() {
       {/* Bar Mobile Menu Trigger */}
       <div className="lg:hidden bg-[#1b4332] px-4 py-2 text-white flex items-center justify-between border-t border-[#2d6a4f]/50 text-xs">
         <button
+          type="button"
           onClick={() => setMobileOpen(true)}
-          className="flex items-center gap-2 font-bold bg-[#2d6a4f] px-3 py-1.5 rounded-lg text-[#d8f3dc]"
+          className="flex items-center gap-2 font-bold bg-[#2d6a4f] px-3 py-1.5 rounded-lg text-[#d8f3dc] cursor-pointer"
         >
           <Menu className="w-4 h-4" />
           <span>Menu de Opções</span>
