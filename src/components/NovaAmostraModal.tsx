@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
 import { Amostra, Usuario } from '../types';
-import { PlusCircle, QrCode, CheckCircle, X, Sparkles, Sprout, Edit3 } from 'lucide-react';
+import { PlusCircle, QrCode, CheckCircle, X, Sparkles, Sprout, Edit3, Calendar, Clock } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { calculateLeituraDates, formatDateBR, getTodayBR } from '../utils/dateUtils';
 
 interface NovaAmostraModalProps {
   currentUser: Usuario;
@@ -30,7 +31,7 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
   const [categoria, setCategoria] = useState(editingAmostra ? editingAmostra.categoria : 'C1');
   const [safra, setSafra] = useState(editingAmostra ? editingAmostra.safra : '2025/2026');
   const [dataSemeadura, setDataSemeadura] = useState(
-    editingAmostra ? editingAmostra.dataSemeadura : new Date().toISOString().split('T')[0]
+    editingAmostra ? editingAmostra.dataSemeadura : getTodayBR()
   );
   const [responsavel, setResponsavel] = useState(editingAmostra ? editingAmostra.responsavel : currentUser.nome);
   const [observacoes, setObservacoes] = useState(editingAmostra ? editingAmostra.observacoes : '');
@@ -38,12 +39,9 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
     editingAmostra ? (editingAmostra.quantidadeSementes || 100) : 100
   );
   const [tsiMatriz, setTsiMatriz] = useState(editingAmostra?.tsiMatriz || 'Seedcorp / TSI Padrão');
-  const [dataLeitura7dias, setDataLeitura7dias] = useState(
-    editingAmostra?.dataLeitura7dias || ''
-  );
-  const [dataLeitura10dias, setDataLeitura10dias] = useState(
-    editingAmostra?.dataLeitura10dias || ''
-  );
+
+  // Cálculo Automático Obrigatório: 7 dias e 10 dias a partir da data de lançamento
+  const { dataLeitura7dias, dataLeitura10dias } = calculateLeituraDates(dataSemeadura);
 
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -70,8 +68,8 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
         observacoes: observacoes ? observacoes.trim() : '',
         quantidadeSementes: quantidadeSementes || 100,
         tsiMatriz: tsiMatriz || '',
-        dataLeitura7dias: dataLeitura7dias || '',
-        dataLeitura10dias: dataLeitura10dias || '',
+        dataLeitura7dias,
+        dataLeitura10dias,
       };
 
       const saved = await storageService.saveAmostra(payload);
@@ -255,18 +253,23 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
               </select>
             </div>
 
-            {/* Data Semeadura */}
+            {/* Data de Lançamento da Amostra (Semeadura) */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">
-                Data da Semeadura *
+                Data de Lançamento da Amostra *
               </label>
-              <input
-                type="date"
-                required
-                value={dataSemeadura}
-                onChange={(e) => setDataSemeadura(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-              />
+              <div className="relative">
+                <input
+                  type="date"
+                  required
+                  value={dataSemeadura}
+                  onChange={(e) => setDataSemeadura(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Data de semeadura/instalação do canteiro.
+              </p>
             </div>
 
             {/* Responsável */}
@@ -310,32 +313,62 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
               />
             </div>
 
-            {/* Data Leitura 7 dias */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                Data Leitura 7 Dias
-              </label>
-              <input
-                type="date"
-                value={dataLeitura7dias}
-                onChange={(e) => setDataLeitura7dias(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-              />
+          </div>
+
+          {/* PAINEL DE CÁLCULO AUTOMÁTICO DAS DATAS DE LEITURA (7 E 10 DIAS) */}
+          <div className="bg-[#f0f7f4] border border-[#b7e4c7] rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#2d6a4f]" />
+                <span className="text-xs font-bold text-[#1b4332] uppercase tracking-wide">
+                  Datas de Leitura de Germinação (Cálculo Automático)
+                </span>
+              </div>
+              <span className="bg-[#2d6a4f] text-[#d8f3dc] text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                AUTOMÁTICO
+              </span>
             </div>
 
-            {/* Data Leitura 10 dias */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                Data Leitura 10 Dias
-              </label>
-              <input
-                type="date"
-                value={dataLeitura10dias}
-                onChange={(e) => setDataLeitura10dias(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              
+              {/* Data de Lançamento */}
+              <div className="bg-white p-3 rounded-xl border border-gray-200">
+                <span className="text-[11px] font-semibold text-gray-500 block">Data de Lançamento:</span>
+                <p className="text-sm font-black text-gray-900 mt-0.5">
+                  {formatDateBR(dataSemeadura)}
+                </p>
+                <span className="text-[10px] text-gray-500 block mt-0.5">Dia 0 (Início)</span>
+              </div>
 
+              {/* Leitura de 7 dias */}
+              <div className="bg-white p-3 rounded-xl border border-[#74c69d] shadow-2xs relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-[#2d6a4f] block">Leitura de 7 Dias:</span>
+                  <span className="text-[10px] bg-[#d8f3dc] text-[#1b4332] font-extrabold px-1.5 py-0.2 rounded">
+                    +7 dias
+                  </span>
+                </div>
+                <p className="text-sm font-black text-[#1b4332] mt-0.5">
+                  {formatDateBR(dataLeitura7dias)}
+                </p>
+                <span className="text-[10px] text-gray-500 block mt-0.5">1ª Contagem de plântulas</span>
+              </div>
+
+              {/* Leitura de 10 dias */}
+              <div className="bg-white p-3 rounded-xl border border-[#74c69d] shadow-2xs relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-[#2d6a4f] block">Leitura de 10 Dias:</span>
+                  <span className="text-[10px] bg-[#d8f3dc] text-[#1b4332] font-extrabold px-1.5 py-0.2 rounded">
+                    +10 dias
+                  </span>
+                </div>
+                <p className="text-sm font-black text-[#1b4332] mt-0.5">
+                  {formatDateBR(dataLeitura10dias)}
+                </p>
+                <span className="text-[10px] text-gray-500 block mt-0.5">Contagem final de germinação</span>
+              </div>
+
+            </div>
           </div>
 
           {/* Observações */}

@@ -19,6 +19,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { Amostra, Avaliacao, FotoAmostra, Usuario, ConfiguracaoAprovacao, SyncOperation } from '../types';
+import { calculateLeituraDates, addDaysToDate } from '../utils/dateUtils';
 
 const STORAGE_KEYS = {
   CURRENT_USER: 'smart_canteiro_current_user_v2',
@@ -435,11 +436,16 @@ class StorageService {
     const now = new Date().toISOString();
     let targetAmostra: Amostra;
 
+    // Cálculo automático obrigatório das leituras de 7 e 10 dias
+    const { dataLeitura7dias, dataLeitura10dias } = calculateLeituraDates(amostraData.dataSemeadura);
+
     if (amostraData.id) {
       const existing = this.getAmostraById(amostraData.id);
       targetAmostra = {
         ...(existing || {} as Amostra),
         ...amostraData,
+        dataLeitura7dias: amostraData.dataLeitura7dias || dataLeitura7dias,
+        dataLeitura10dias: amostraData.dataLeitura10dias || dataLeitura10dias,
         dataAtualizacao: now,
       } as Amostra;
     } else {
@@ -452,6 +458,10 @@ class StorageService {
         dataCadastro: now,
         dataAtualizacao: now,
         quantidadeSementes: amostraData.quantidadeSementes || 100,
+        dataLeitura7dias: amostraData.dataLeitura7dias || dataLeitura7dias,
+        dataLeitura10dias: amostraData.dataLeitura10dias || dataLeitura10dias,
+        leitura7diasRealizada: false,
+        leitura10diasRealizada: false,
       };
     }
 
@@ -567,14 +577,24 @@ class StorageService {
     // Salvar no Firestore
     await setDoc(doc(db, 'avaliacoes', id), sanitizedAvaliacao);
 
-    // Se amostra existir, atualizar status para Concluído
+    // Se amostra existir, atualizar status e flags de leitura
     if (amostra) {
+      const is7d = avaliacaoData.tipoLeitura === '7_dias';
       const updatedAmostra: Amostra = {
         ...amostra,
-        status: 'Concluído',
+        status: is7d ? 'Pendente' : 'Concluído',
+        leitura7diasRealizada: true,
+        dataRealizacao7dias: is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : (amostra.dataRealizacao7dias || avaliacaoData.dataAvaliacao),
+        leitura10diasRealizada: !is7d,
+        dataRealizacao10dias: !is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : amostra.dataRealizacao10dias,
         dataAtualizacao: new Date().toISOString(),
       };
       await setDoc(doc(db, 'amostras', amostra.id), this.sanitizeForFirestore(updatedAmostra));
+
+      const aIdx = this.amostras.findIndex(a => a.id === amostra.id);
+      if (aIdx !== -1) {
+        this.amostras[aIdx] = updatedAmostra;
+      }
     }
 
     this.notify();

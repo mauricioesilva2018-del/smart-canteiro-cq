@@ -13,7 +13,7 @@ export interface Amostra {
   peneira: string;
   categoria: string;
   safra: string;
-  dataSemeadura: string;
+  dataSemeadura: string; // Data de lançamento da amostra
   responsavel: string;
   observacoes: string;
   status: StatusAmostra;
@@ -22,13 +22,18 @@ export interface Amostra {
   dataAtualizacao: string;
   quantidadeSementes?: number; // Padrão: 100
   tsiMatriz?: string;
-  dataLeitura7dias?: string;
-  dataLeitura10dias?: string;
+  dataLeitura7dias?: string;  // Calculado: dataSemeadura + 7 dias
+  dataLeitura10dias?: string; // Calculado: dataSemeadura + 10 dias
+  leitura7diasRealizada?: boolean;
+  dataRealizacao7dias?: string;
+  leitura10diasRealizada?: boolean;
+  dataRealizacao10dias?: string;
 }
 
 export interface Avaliacao {
   id: string;
   amostraId: string;
+  tipoLeitura?: '7_dias' | '10_dias' | 'final';
   fortes: number;
   intermediarias: number;
   fracas: number;

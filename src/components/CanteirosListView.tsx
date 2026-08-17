@@ -4,11 +4,12 @@ import { storageService } from '../services/storageService';
 import { exportService } from '../services/exportService';
 import { 
   Search, Filter, Plus, FileSpreadsheet, FileText, QrCode, 
-  Trash2, ClipboardCheck, ArrowUpDown, Calendar, Sprout, RefreshCw, Edit3
+  Trash2, ClipboardCheck, ArrowUpDown, Calendar, Sprout, RefreshCw, Edit3, CheckCircle2
 } from 'lucide-react';
 import { NovaAmostraModal } from './NovaAmostraModal';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
+import { getAmostraLeituraInfo, formatDateBR } from '../utils/dateUtils';
 
 interface CanteirosListViewProps {
   currentUser: Usuario;
@@ -336,18 +337,18 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                     <th className="py-3.5 px-4">Protocolo</th>
                     <th className="py-3.5 px-3">Cultura / Cultivar</th>
                     <th className="py-3.5 px-3">Lote</th>
-                    <th className="py-3.5 px-2">Peneira</th>
-                    <th className="py-3.5 px-2">Categoria</th>
                     <th className="py-3.5 px-2">Safra</th>
-                    <th className="py-3.5 px-3">Semeadura</th>
-                    <th className="py-3.5 px-3">Status CQ</th>
+                    <th className="py-3.5 px-3">Lançamento</th>
+                    <th className="py-3.5 px-3">Leitura 7d</th>
+                    <th className="py-3.5 px-3">Leitura 10d</th>
+                    <th className="py-3.5 px-3">Status da Leitura</th>
                     <th className="py-3.5 px-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredAmostras.map((amostra) => {
                     const avaliacao = avaliacoes.find(v => v.amostraId === amostra.id);
-                    const isConcluido = amostra.status === 'Concluído';
+                    const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
 
                     return (
                       <tr key={amostra.id} className="hover:bg-gray-50/80 transition-colors">
@@ -370,32 +371,55 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                           <p className="text-[11px] text-gray-500">{amostra.cultivar}</p>
                         </td>
 
-                        <td className="py-3.5 px-3 font-semibold text-gray-800">{amostra.lote}</td>
-                        <td className="py-3.5 px-2 font-medium">{amostra.peneira}</td>
-                        <td className="py-3.5 px-2">
-                          <span className="bg-gray-100 text-gray-800 px-2 py-0.5 rounded text-[10px] font-bold">
-                            {amostra.categoria}
-                          </span>
+                        <td className="py-3.5 px-3 font-semibold text-gray-800">
+                          {amostra.lote}
+                          <span className="block text-[10px] text-gray-400 font-normal">Pen: {amostra.peneira} • {amostra.categoria}</span>
                         </td>
+
                         <td className="py-3.5 px-2 font-medium">{amostra.safra}</td>
-                        <td className="py-3.5 px-3 font-medium text-gray-600">
-                          {new Date(amostra.dataSemeadura + 'T00:00:00').toLocaleDateString('pt-BR')}
+
+                        <td className="py-3.5 px-3 font-medium text-gray-700">
+                          {formatDateBR(amostra.dataSemeadura)}
+                        </td>
+
+                        <td className="py-3.5 px-3 font-bold text-[#1b4332]">
+                          <div className="flex items-center gap-1">
+                            <span>{formatDateBR(leituraInfo.data7d)}</span>
+                            {leituraInfo.leitura7dRealizada && (
+                              <span title="Leitura de 7 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3.5 px-3 font-bold text-[#1b4332]">
+                          <div className="flex items-center gap-1">
+                            <span>{formatDateBR(leituraInfo.data10d)}</span>
+                            {leituraInfo.leitura10dRealizada && (
+                              <span title="Leitura de 10 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-3">
-                          {isConcluido && avaliacao ? (
-                            <div className="flex flex-col">
-                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${
-                                avaliacao.resultadoAprovacao === 'Aprovado' 
-                                  ? 'bg-emerald-100 text-emerald-800' 
-                                  : 'bg-rose-100 text-rose-800'
-                              }`}>
-                                {avaliacao.resultadoAprovacao.toUpperCase()} ({avaliacao.germinacao}%)
-                              </span>
-                            </div>
+                          {leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-400 text-amber-950 px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
+                              🟡 LEITURA PENDENTE
+                            </span>
+                          ) : leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px] uppercase">
+                              🟢 LEITURA DE 10 DIAS REALIZADA
+                            </span>
+                          ) : leituraInfo.statusGeral === 'LEITURA_7D_REALIZADA' ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px] uppercase">
+                              🟢 LEITURA DE 7 DIAS REALIZADA
+                            </span>
+                          ) : leituraInfo.statusGeral === 'ATRASADA' ? (
+                            <span className="inline-flex items-center gap-1 bg-rose-600 text-white px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
+                              🔴 LEITURA ATRASADA
+                            </span>
                           ) : (
-                            <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                              PENDENTE
+                            <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-medium text-[10px]">
+                              Aguardando ({leituraInfo.diasParaProximaLeitura}d)
                             </span>
                           )}
                         </td>
@@ -463,7 +487,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
             <div className="block lg:hidden divide-y divide-gray-100">
               {filteredAmostras.map((amostra) => {
                 const avaliacao = avaliacoes.find(v => v.amostraId === amostra.id);
-                const isConcluido = amostra.status === 'Concluído';
+                const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
 
                 return (
                   <div key={amostra.id} className="p-4 space-y-3">
@@ -486,17 +510,25 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                       </div>
 
                       <div>
-                        {isConcluido && avaliacao ? (
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                            avaliacao.resultadoAprovacao === 'Aprovado' 
-                              ? 'bg-emerald-100 text-emerald-800' 
-                              : 'bg-rose-100 text-rose-800'
-                          }`}>
-                            {avaliacao.germinacao}% - {avaliacao.resultadoAprovacao}
+                        {leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
+                          <span className="bg-amber-400 text-amber-950 font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
+                            🟡 LEITURA PENDENTE
+                          </span>
+                        ) : leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
+                          <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full uppercase">
+                            🟢 10D REALIZADA
+                          </span>
+                        ) : leituraInfo.statusGeral === 'LEITURA_7D_REALIZADA' ? (
+                          <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full uppercase">
+                            🟢 7D REALIZADA
+                          </span>
+                        ) : leituraInfo.statusGeral === 'ATRASADA' ? (
+                          <span className="bg-rose-600 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
+                            🔴 ATRASADA
                           </span>
                         ) : (
-                          <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full">
-                            PENDENTE
+                          <span className="bg-gray-100 text-gray-700 font-medium text-[10px] px-2.5 py-1 rounded-full">
+                            {leituraInfo.diasParaProximaLeitura}d restantes
                           </span>
                         )}
                       </div>
@@ -504,12 +536,11 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
                     <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-xl">
                       <div><span className="font-semibold text-gray-800">Lote:</span> {amostra.lote}</div>
-                      <div><span className="font-semibold text-gray-800">Peneira:</span> {amostra.peneira}</div>
-                      <div><span className="font-semibold text-gray-800">Categoria:</span> {amostra.categoria}</div>
                       <div><span className="font-semibold text-gray-800">Safra:</span> {amostra.safra}</div>
-                      <div className="col-span-2">
-                        <span className="font-semibold text-gray-800">Semeadura:</span> {new Date(amostra.dataSemeadura + 'T00:00:00').toLocaleDateString('pt-BR')}
-                      </div>
+                      <div><span className="font-semibold text-gray-800">Lançamento:</span> {formatDateBR(amostra.dataSemeadura)}</div>
+                      <div><span className="font-semibold text-gray-800">Peneira:</span> {amostra.peneira}</div>
+                      <div><span className="font-semibold text-[#1b4332]">Leitura 7d:</span> {formatDateBR(leituraInfo.data7d)}</div>
+                      <div><span className="font-semibold text-[#1b4332]">Leitura 10d:</span> {formatDateBR(leituraInfo.data10d)}</div>
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
@@ -551,7 +582,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                         className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                       >
                         <ClipboardCheck className="w-4 h-4 text-[#d8f3dc]" />
-                        <span>{isConcluido ? 'Ver Avaliação' : 'Iniciar Avaliação'}</span>
+                        <span>Avaliar</span>
                       </button>
                     </div>
 

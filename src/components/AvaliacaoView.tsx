@@ -9,8 +9,9 @@ import { ToastNotification, ToastMessage } from './ToastNotification';
 import { 
   ArrowLeft, Save, FileText, 
   Clock, ShieldCheck, ShieldAlert, Camera, Sprout, Trash2,
-  CheckCheck
+  CheckCheck, Calendar, Bell, CheckCircle2
 } from 'lucide-react';
+import { getAmostraLeituraInfo, formatDateBR, addDaysToDate } from '../utils/dateUtils';
 
 interface AvaliacaoViewProps {
   amostraId: string;
@@ -25,6 +26,18 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 }) => {
   const [amostra, setAmostra] = useState<Amostra | undefined>(() => storageService.getAmostraById(amostraId));
   const [existingAvaliacao, setExistingAvaliacao] = useState<Avaliacao | undefined>(() => storageService.getAvaliacaoByAmostraId(amostraId));
+
+  // Determinar Tipo de Leitura Inicial (7 dias, 10 dias ou final)
+  const [tipoLeitura, setTipoLeitura] = useState<'7_dias' | '10_dias' | 'final'>(() => {
+    if (existingAvaliacao?.tipoLeitura) return existingAvaliacao.tipoLeitura;
+    if (amostra) {
+      const leInfo = getAmostraLeituraInfo(amostra, existingAvaliacao);
+      if (leInfo.proximaLeituraTipo === '10_dias') return '10_dias';
+      if (leInfo.proximaLeituraTipo === 'concluida') return 'final';
+      return '7_dias';
+    }
+    return '7_dias';
+  });
 
   // Valores Iniciais
   const initialFortes = existingAvaliacao ? existingAvaliacao.fortes : 70;
@@ -218,6 +231,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         dataAvaliacao,
         horaAvaliacao,
         usuarioAvaliador: currentUser.nome,
+        tipoLeitura,
       });
 
       setExistingAvaliacao(saved);
@@ -271,6 +285,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         dataAvaliacao,
         horaAvaliacao,
         usuarioAvaliador: currentUser.nome,
+        tipoLeitura,
       });
 
       setExistingAvaliacao(saved);
@@ -413,15 +428,70 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         </div>
 
         {/* Tabela de Metadados em Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-gray-50 p-3 rounded-xl border border-gray-100">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-gray-50 p-3.5 rounded-xl border border-gray-100">
           <div><span className="text-gray-500 font-medium">Nº do Lote:</span> <p className="font-bold text-gray-900">{amostra.lote}</p></div>
-          <div><span className="text-gray-500 font-medium">Peneira:</span> <p className="font-bold text-gray-900">{amostra.peneira}</p></div>
-          <div><span className="text-gray-500 font-medium">Categoria:</span> <p className="font-bold text-gray-900">{amostra.categoria}</p></div>
+          <div><span className="text-gray-500 font-medium">Peneira / Cat:</span> <p className="font-bold text-gray-900">{amostra.peneira} • {amostra.categoria}</p></div>
           <div><span className="text-gray-500 font-medium">Safra:</span> <p className="font-bold text-gray-900">{amostra.safra}</p></div>
+          <div><span className="text-gray-500 font-medium">Germinação:</span> <p className="font-bold text-[#1b4332] text-sm">{percentualGerminacao}%</p></div>
+          <div><span className="text-gray-500 font-medium">Data Lançamento:</span> <p className="font-bold text-gray-800">{formatDateBR(amostra.dataSemeadura)}</p></div>
+          <div>
+            <span className="text-gray-500 font-medium">Leitura 7 dias (+7d):</span> 
+            <p className="font-black text-[#1b4332] flex items-center gap-1">
+              <span>{formatDateBR(amostra.dataLeitura7dias || addDaysToDate(amostra.dataSemeadura, 7))}</span>
+              {amostra.leitura7diasRealizada && <span title="Leitura de 7 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>}
+            </p>
+          </div>
+          <div>
+            <span className="text-gray-500 font-medium">Leitura 10 dias (+10d):</span> 
+            <p className="font-black text-[#1b4332] flex items-center gap-1">
+              <span>{formatDateBR(amostra.dataLeitura10dias || addDaysToDate(amostra.dataSemeadura, 10))}</span>
+              {amostra.leitura10diasRealizada && <span title="Leitura de 10 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>}
+            </p>
+          </div>
           <div><span className="text-gray-500 font-medium">Matriz / TSI:</span> <p className="font-bold text-gray-900">{amostra.tsiMatriz || 'Padrão TSI'}</p></div>
-          <div><span className="text-gray-500 font-medium">Leitura 7 dias:</span> <p className="font-bold text-gray-900">{amostra.dataLeitura7dias ? new Date(amostra.dataLeitura7dias + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/A'}</p></div>
-          <div><span className="text-gray-500 font-medium">Leitura 10 dias:</span> <p className="font-bold text-gray-900">{amostra.dataLeitura10dias ? new Date(amostra.dataLeitura10dias + 'T00:00:00').toLocaleDateString('pt-BR') : 'N/A'}</p></div>
-          <div><span className="text-gray-500 font-medium">Germinação Atual:</span> <p className="font-bold text-[#1b4332]">{percentualGerminacao}%</p></div>
+        </div>
+
+        {/* Seletor do Tipo de Leitura Atual */}
+        <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+            <Bell className="w-3.5 h-3.5 text-[#2d6a4f]" />
+            Etapa da Leitura Atual:
+          </span>
+          <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setTipoLeitura('7_dias')}
+              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                tipoLeitura === '7_dias'
+                  ? 'bg-[#1b4332] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-black'
+              }`}
+            >
+              Leitura de 7 Dias
+            </button>
+            <button
+              type="button"
+              onClick={() => setTipoLeitura('10_dias')}
+              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                tipoLeitura === '10_dias'
+                  ? 'bg-[#1b4332] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-black'
+              }`}
+            >
+              Leitura de 10 Dias
+            </button>
+            <button
+              type="button"
+              onClick={() => setTipoLeitura('final')}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                tipoLeitura === 'final'
+                  ? 'bg-gray-800 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-black'
+              }`}
+            >
+              Geral / Final
+            </button>
+          </div>
         </div>
       </div>
 

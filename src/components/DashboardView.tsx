@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { storageService } from '../services/storageService';
-import { PlusCircle, Sprout, Clock, CheckCircle2, Award, HeartPulse, AlertOctagon, TrendingUp, Filter } from 'lucide-react';
+import { 
+  PlusCircle, Sprout, Clock, CheckCircle2, Award, HeartPulse, 
+  AlertOctagon, TrendingUp, Filter, Bell, Calendar, ChevronRight, 
+  ClipboardCheck, AlertTriangle, CheckCircle
+} from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend 
 } from 'recharts';
+import { 
+  getAmostraLeituraInfo, 
+  formatDateBR, 
+  getTodayBR, 
+  addDaysToDate 
+} from '../utils/dateUtils';
+import { Amostra, Avaliacao } from '../types';
 
 interface DashboardViewProps {
   onNewSample: () => void;
@@ -32,6 +43,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const amostras = storageService.getAmostras();
   const avaliacoes = storageService.getAvaliacoes();
   const configs = storageService.getConfiguracoes();
+
+  // Processar informações de leituras (7 e 10 dias) para todas as amostras
+  const amostrasComLeitura = amostras.map(amostra => {
+    const avaliacao = avaliacoes.find(a => a.amostraId === amostra.id);
+    const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
+    return {
+      amostra,
+      avaliacao,
+      leituraInfo,
+    };
+  });
+
+  // Amostras com Leituras de Hoje (7 dias ou 10 dias prontas hoje)
+  const leiturasDeHoje = amostrasComLeitura.filter(item => {
+    const { leituraInfo } = item;
+    // Se hoje é data de 7 dias e 7 dias não realizada OU hoje é 10 dias e 10 dias não realizada
+    return (leituraInfo.is7dHoje && !leituraInfo.leitura7dRealizada) ||
+           (leituraInfo.is10dHoje && !leituraInfo.leitura10dRealizada);
+  });
+
+  // Amostras Atrasadas
+  const leiturasAtrasadas = amostrasComLeitura.filter(item => {
+    const { leituraInfo } = item;
+    return (leituraInfo.is7dAtrasada && !leituraInfo.leitura7dRealizada) ||
+           (leituraInfo.is10dAtrasada && !leituraInfo.leitura10dRealizada);
+  });
+
+  // Próximas Leituras (todas as amostras ordenadas por prioridade/proximidade de leitura)
+  const proximasLeituras = [...amostrasComLeitura].sort((a, b) => {
+    // Primeiro as de hoje, depois atrasadas, depois futuras mais próximas
+    const scoreA = a.leituraInfo.statusGeral === 'PENDENTE_HOJE' ? 0 : 
+                   a.leituraInfo.statusGeral === 'ATRASADA' ? 1 : 
+                   a.leituraInfo.statusGeral === 'FUTURA' ? 2 : 3;
+    const scoreB = b.leituraInfo.statusGeral === 'PENDENTE_HOJE' ? 0 : 
+                   b.leituraInfo.statusGeral === 'ATRASADA' ? 1 : 
+                   b.leituraInfo.statusGeral === 'FUTURA' ? 2 : 3;
+    if (scoreA !== scoreB) return scoreA - scoreB;
+    return a.leituraInfo.diasParaProximaLeitura - b.leituraInfo.diasParaProximaLeitura;
+  });
 
   // Dados para Gráfico por Cultura
   const culturaCounts = amostras.reduce((acc, curr) => {
@@ -80,7 +130,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const lineDataEvolucao = Object.entries(evalTimelineMap)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, count]) => {
-      // Formata data YYYY-MM-DD para DD/MM
       const parts = date.split('-');
       const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : date;
       return {
@@ -96,24 +145,389 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="bg-gradient-to-r from-[#1b4332] via-[#2d6a4f] to-[#40916c] rounded-2xl p-6 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <span className="text-xs uppercase tracking-wider bg-[#52b788]/30 text-[#d8f3dc] px-3 py-1 rounded-full font-bold border border-[#74c69d]/30">
-            Painel Geral CQ
+            Painel Geral CQ • Germinação de Canteiros
           </span>
           <h2 className="text-2xl sm:text-3xl font-extrabold mt-2 tracking-tight">
             Controle de Qualidade em Tempo Real
           </h2>
           <p className="text-[#b7e4c7] text-sm mt-1 max-w-xl">
-            Acompanhe o desempenho de germinação dos canteiros de sementes e realize contagens em segundos.
+            Cálculo automático de leituras de 7 e 10 dias com alertas automáticos para o operador.
           </p>
         </div>
 
         <button
           id="dash-btn-nova-amostra"
           onClick={onNewSample}
-          className="flex items-center gap-2 bg-[#d8f3dc] hover:bg-white text-[#1b4332] font-bold px-5 py-3 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm sm:text-base whitespace-nowrap"
+          className="flex items-center gap-2 bg-[#d8f3dc] hover:bg-white text-[#1b4332] font-bold px-5 py-3 rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm sm:text-base whitespace-nowrap cursor-pointer"
         >
           <PlusCircle className="w-5 h-5 text-[#2d6a4f]" />
           <span>+ Nova Amostra</span>
         </button>
+      </div>
+
+      {/* ALERTAS AUTOMÁTICOS DE LEITURA (QUANDO CHEGAR O DIA OU ATRASADAS) */}
+      {(leiturasDeHoje.length > 0 || leiturasAtrasadas.length > 0) && (
+        <div className="space-y-3">
+          {leiturasDeHoje.map(({ amostra, leituraInfo }) => (
+            <div 
+              key={`alert-today-${amostra.id}`}
+              className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-300"
+            >
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 bg-amber-500 text-white rounded-xl shadow-xs">
+                  <Bell className="w-6 h-6 animate-bounce" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-500 text-white text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                      {leituraInfo.is10dHoje ? '🔔 LEITURA DE 10 DIAS' : '🔔 LEITURA DE 7 DIAS'}
+                    </span>
+                    <span className="text-xs font-bold text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded-md">
+                      HOJE
+                    </span>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-gray-900 mt-1">
+                    A amostra <span className="text-[#1b4332] underline">{amostra.protocolo}</span> está pronta para leitura hoje.
+                  </p>
+                  <p className="text-xs text-gray-700 mt-0.5">
+                    Cultura: <strong className="text-gray-900">{amostra.cultura} ({amostra.cultivar})</strong> • Lote: <strong>{amostra.lote}</strong> • Lançamento: <strong>{formatDateBR(amostra.dataSemeadura)}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onNavigateToAvaliacao(amostra.id)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                <span>Realizar Leitura Agora</span>
+              </button>
+            </div>
+          ))}
+
+          {leiturasAtrasadas.map(({ amostra, leituraInfo }) => (
+            <div 
+              key={`alert-overdue-${amostra.id}`}
+              className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+            >
+              <div className="flex items-start gap-3.5">
+                <div className="p-3 bg-rose-600 text-white rounded-xl shadow-xs">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-rose-600 text-white text-[11px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                      🔴 LEITURA ATRASADA
+                    </span>
+                    <span className="text-xs font-bold text-rose-800 bg-rose-200 px-2 py-0.5 rounded-md">
+                      {leituraInfo.diasParaProximaLeitura < 0 ? `Atrasada há ${Math.abs(leituraInfo.diasParaProximaLeitura)} dias` : 'Atrasada'}
+                    </span>
+                  </div>
+                  <p className="text-base sm:text-lg font-black text-gray-900 mt-1">
+                    A amostra <span className="text-rose-900 underline">{amostra.protocolo}</span> possui leitura de canteiro pendente e atrasada.
+                  </p>
+                  <p className="text-xs text-gray-700 mt-0.5">
+                    Cultura: <strong>{amostra.cultura} ({amostra.cultivar})</strong> • Lote: <strong>{amostra.lote}</strong> • Data prevista: <strong>{formatDateBR(leituraInfo.proximaLeituraData)}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onNavigateToAvaliacao(amostra.id)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-rose-700 hover:bg-rose-800 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+              >
+                <ClipboardCheck className="w-4 h-4" />
+                <span>Regularizar Leitura</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* SEÇÃO 1: LEITURAS DE HOJE */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+                LEITURAS DE HOJE
+                {leiturasDeHoje.length > 0 && (
+                  <span className="bg-amber-500 text-white text-xs font-black px-2.5 py-0.5 rounded-full">
+                    {leiturasDeHoje.length}
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-gray-500">
+                Amostras que atingiram o ciclo de 7 ou 10 dias e precisam ser avaliadas hoje ({formatDateBR(getTodayBR())})
+              </p>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => onNavigateToCanteiros('Pendente')}
+            className="text-xs font-bold text-[#2d6a4f] hover:text-[#1b4332] hover:underline"
+          >
+            Ver todos canteiros →
+          </button>
+        </div>
+
+        {leiturasDeHoje.length === 0 ? (
+          <div className="p-8 text-center bg-gray-50/80 rounded-xl border border-dashed border-gray-200">
+            <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
+            <p className="text-sm font-extrabold text-gray-800">Nenhuma leitura pendente para hoje</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Todas as leituras de 7 e 10 dias previstas para a data atual estão em dia ou foram realizadas.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {leiturasDeHoje.map(({ amostra, leituraInfo }) => (
+              <div 
+                key={amostra.id}
+                className="bg-amber-50/60 border border-amber-300 rounded-xl p-4 flex flex-col justify-between hover:shadow-md transition-all group"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-black text-gray-900">{amostra.protocolo}</span>
+                    <span className="bg-amber-400 text-amber-950 font-black text-[10px] uppercase px-2 py-0.5 rounded-full tracking-wide">
+                      🟡 LEITURA PENDENTE
+                    </span>
+                  </div>
+
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs font-bold text-[#1b4332]">
+                      {amostra.cultura} - {amostra.cultivar}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      Lote: <strong className="text-gray-800">{amostra.lote}</strong> • Peneira: {amostra.peneira}
+                    </p>
+                    <div className="pt-1 text-[11px] text-gray-600 flex flex-col gap-0.5">
+                      <span>Lançamento: <strong>{formatDateBR(amostra.dataSemeadura)}</strong></span>
+                      <span className="text-amber-900 font-bold">
+                        {leituraInfo.is10dHoje ? 'Meta: Leitura de 10 Dias (Hoje)' : 'Meta: Leitura de 7 Dias (Hoje)'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-amber-200 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToAvaliacao(amostra.id)}
+                    className="w-full bg-[#1b4332] hover:bg-[#2d6a4f] text-white py-2 px-3 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <ClipboardCheck className="w-4 h-4" />
+                    <span>Realizar Leitura Agora</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* SEÇÃO 2: PRÓXIMAS LEITURAS */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+          <div>
+            <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+              <Clock className="w-5 h-5 text-[#2d6a4f]" />
+              PRÓXIMAS LEITURAS
+            </h3>
+            <p className="text-xs text-gray-500">
+              Cronograma automático de leituras de 7 e 10 dias calculado a partir do lançamento
+            </p>
+          </div>
+          
+          <span className="text-xs font-semibold text-gray-500">
+            Total monitorado: {proximasLeituras.length} amostras
+          </span>
+        </div>
+
+        {proximasLeituras.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            <Sprout className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm font-bold text-gray-700">Nenhuma amostra registrada</p>
+            <p className="text-xs text-gray-500 mt-1">Cadastre uma nova amostra para iniciar o acompanhamento.</p>
+          </div>
+        ) : (
+          <>
+            {/* Tabela de Próximas Leituras (Desktop) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs text-gray-700">
+                <thead className="bg-[#1b4332] text-white uppercase text-[11px] tracking-wider font-bold">
+                  <tr>
+                    <th className="py-3 px-3">Protocolo</th>
+                    <th className="py-3 px-3">Cultura</th>
+                    <th className="py-3 px-3">Lote</th>
+                    <th className="py-3 px-3">Data de Lançamento</th>
+                    <th className="py-3 px-3">Leitura 7 Dias</th>
+                    <th className="py-3 px-3">Leitura 10 Dias</th>
+                    <th className="py-3 px-3">Previsão / Prazo</th>
+                    <th className="py-3 px-3">Status da Leitura</th>
+                    <th className="py-3 px-3 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {proximasLeituras.slice(0, 10).map(({ amostra, avaliacao, leituraInfo }) => {
+                    return (
+                      <tr key={amostra.id} className="hover:bg-gray-50 transition-colors">
+                        
+                        <td className="py-3 px-3 font-extrabold text-gray-900">
+                          {amostra.protocolo}
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <p className="font-bold text-gray-900">{amostra.cultura}</p>
+                          <p className="text-[10px] text-gray-500">{amostra.cultivar}</p>
+                        </td>
+
+                        <td className="py-3 px-3 font-semibold text-gray-800">
+                          {amostra.lote}
+                        </td>
+
+                        <td className="py-3 px-3 font-medium text-gray-700">
+                          {formatDateBR(amostra.dataSemeadura)}
+                        </td>
+
+                        <td className="py-3 px-3 font-semibold text-[#1b4332]">
+                          <div className="flex items-center gap-1">
+                            <span>{formatDateBR(leituraInfo.data7d)}</span>
+                            {leituraInfo.leitura7dRealizada && (
+                              <span title="Leitura de 7 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 font-semibold text-[#1b4332]">
+                          <div className="flex items-center gap-1">
+                            <span>{formatDateBR(leituraInfo.data10d)}</span>
+                            {leituraInfo.leitura10dRealizada && (
+                              <span title="Leitura de 10 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3">
+                          {leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
+                            <span className="text-emerald-700 font-bold text-[11px]">Finalizado</span>
+                          ) : leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
+                            <span className="text-amber-800 font-black text-[11px] bg-amber-100 px-2 py-0.5 rounded">Hoje!</span>
+                          ) : leituraInfo.statusGeral === 'ATRASADA' ? (
+                            <span className="text-rose-700 font-black text-[11px] bg-rose-100 px-2 py-0.5 rounded">
+                              {Math.abs(leituraInfo.diasParaProximaLeitura)}d atrasada
+                            </span>
+                          ) : (
+                            <span className="text-gray-700 font-semibold text-[11px]">
+                              Faltam {leituraInfo.diasParaProximaLeitura} {leituraInfo.diasParaProximaLeitura === 1 ? 'dia' : 'dias'}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3">
+                          {leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-400 text-amber-950 px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
+                              🟡 LEITURA PENDENTE
+                            </span>
+                          ) : leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px] uppercase">
+                              🟢 LEITURA DE 10 DIAS REALIZADA
+                            </span>
+                          ) : leituraInfo.statusGeral === 'LEITURA_7D_REALIZADA' ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px] uppercase">
+                              🟢 LEITURA DE 7 DIAS REALIZADA
+                            </span>
+                          ) : leituraInfo.statusGeral === 'ATRASADA' ? (
+                            <span className="inline-flex items-center gap-1 bg-rose-600 text-white px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
+                              🔴 LEITURA ATRASADA
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-medium text-[10px]">
+                              AGUARDANDO ({leituraInfo.diasParaProximaLeitura}d)
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => onNavigateToAvaliacao(amostra.id)}
+                            className="px-2.5 py-1 bg-[#1b4332] hover:bg-[#2d6a4f] text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                          >
+                            Avaliar
+                          </button>
+                        </td>
+
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Visualização em Cards (Mobile) */}
+            <div className="md:hidden space-y-3">
+              {proximasLeituras.slice(0, 8).map(({ amostra, leituraInfo }) => (
+                <div key={amostra.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-sm text-gray-900">{amostra.protocolo}</span>
+                    {leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
+                      <span className="bg-amber-400 text-amber-950 font-black text-[10px] px-2 py-0.5 rounded-full">
+                        🟡 LEITURA PENDENTE
+                      </span>
+                    ) : leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
+                      <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                        🟢 LEITURA 10D REALIZADA
+                      </span>
+                    ) : leituraInfo.statusGeral === 'LEITURA_7D_REALIZADA' ? (
+                      <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full">
+                        🟢 LEITURA 7D REALIZADA
+                      </span>
+                    ) : leituraInfo.statusGeral === 'ATRASADA' ? (
+                      <span className="bg-rose-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full">
+                        🔴 LEITURA ATRASADA
+                      </span>
+                    ) : (
+                      <span className="bg-gray-200 text-gray-700 font-medium text-[10px] px-2 py-0.5 rounded-full">
+                        Faltam {leituraInfo.diasParaProximaLeitura} dias
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs font-bold text-[#2d6a4f]">{amostra.cultura} - {amostra.cultivar} (Lote: {amostra.lote})</p>
+                  
+                  <div className="grid grid-cols-3 gap-1 text-[11px] bg-white p-2 rounded-lg border border-gray-100">
+                    <div>
+                      <span className="text-gray-400 block text-[10px]">Lançamento:</span>
+                      <strong className="text-gray-800">{formatDateBR(amostra.dataSemeadura)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block text-[10px]">Leitura 7d:</span>
+                      <strong className="text-[#1b4332]">{formatDateBR(leituraInfo.data7d)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block text-[10px]">Leitura 10d:</span>
+                      <strong className="text-[#1b4332]">{formatDateBR(leituraInfo.data10d)}</strong>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToAvaliacao(amostra.id)}
+                    className="w-full bg-[#1b4332] text-white py-1.5 rounded-lg text-xs font-bold text-center"
+                  >
+                    Avaliar Amostra
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Realtime KPI Grid */}
@@ -316,56 +730,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
-
-      {/* Amostras Pendentes de Avaliação (Campo Rápido) */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-base font-bold text-gray-900">Amostras Aguardando Avaliação</h3>
-            <p className="text-xs text-gray-500">Acesse diretamente para iniciar a leitura no canteiro</p>
-          </div>
-          <button 
-            onClick={() => onNavigateToCanteiros('Pendente')}
-            className="text-xs font-semibold text-[#2d6a4f] hover:underline"
-          >
-            Ver todas pendentes ({stats.amostrasPendentes})
-          </button>
-        </div>
-
-        {amostras.filter(a => a.status === 'Pendente').length === 0 ? (
-          <div className="p-8 text-center bg-gray-50 rounded-xl">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-gray-700">Todas as amostras foram avaliadas!</p>
-            <p className="text-xs text-gray-500 mt-0.5">Cadastre uma nova amostra para continuar o controle.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {amostras.filter(a => a.status === 'Pendente').slice(0, 3).map(amostra => (
-              <div 
-                key={amostra.id}
-                onClick={() => onNavigateToAvaliacao(amostra.id)}
-                className="p-4 border border-amber-200 bg-amber-50/50 rounded-xl hover:border-amber-400 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-gray-900">{amostra.protocolo}</span>
-                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      PENDENTE
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-[#2d6a4f] mt-1">{amostra.cultura} - {amostra.cultivar}</p>
-                  <p className="text-xs text-gray-600 mt-0.5">Lote: {amostra.lote} | Peneira: {amostra.peneira}</p>
-                </div>
-                
-                <div className="mt-3 pt-2 border-t border-amber-200/60 flex items-center justify-between text-xs font-bold text-amber-900">
-                  <span>Avaliar Canteiro</span>
-                  <span>→</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
     </div>
