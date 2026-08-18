@@ -537,6 +537,46 @@ class StorageService {
     return this.avaliacoes.find(a => a.amostraId === amostraId);
   }
 
+  /**
+   * Salva exclusivamente a Contagem de Emergência (Leitura de 7 dias).
+   * Registra a quantidade de plântulas emergidas sem exigir classificação de vigor.
+   */
+  async saveLeitura7Dias(amostraId: string, data: {
+    plantulasEmergidas: number;
+    observacoes?: string;
+    dataLeitura?: string;
+    horaLeitura?: string;
+    usuario?: string;
+  }): Promise<Amostra> {
+    await this.ensureFirebaseAuth();
+    const amostra = this.getAmostraById(amostraId);
+    if (!amostra) throw new Error('Amostra não encontrada no sistema');
+
+    const now = new Date();
+    const dataLeitura = data.dataLeitura || now.toISOString().split('T')[0];
+
+    const updatedAmostra: Amostra = {
+      ...amostra,
+      plantulasEmergidas7dias: data.plantulasEmergidas,
+      leitura7diasRealizada: true,
+      dataRealizacao7dias: dataLeitura,
+      usuarioLeitura7dias: data.usuario || amostra.responsavel,
+      obsLeitura7dias: data.observacoes || '',
+      dataAtualizacao: now.toISOString(),
+    };
+
+    const sanitized = this.sanitizeForFirestore(updatedAmostra);
+    await setDoc(doc(db, 'amostras', amostra.id), sanitized);
+
+    const aIdx = this.amostras.findIndex(a => a.id === amostra.id);
+    if (aIdx !== -1) {
+      this.amostras[aIdx] = updatedAmostra;
+    }
+
+    this.notify();
+    return updatedAmostra;
+  }
+
   async saveAvaliacao(avaliacaoData: Omit<Avaliacao, 'id' | 'germinacao' | 'percentualMortas' | 'percentualAnormais' | 'resultadoAprovacao'>): Promise<Avaliacao> {
     await this.ensureFirebaseAuth();
     const amostra = this.getAmostraById(avaliacaoData.amostraId);
@@ -558,9 +598,14 @@ class StorageService {
     const existing = this.getAvaliacaoByAmostraId(avaliacaoData.amostraId);
     const id = existing ? existing.id : 'avl-' + Date.now();
 
+    const plantulasEmergidas7dias = avaliacaoData.plantulasEmergidas7dias !== undefined 
+      ? avaliacaoData.plantulasEmergidas7dias 
+      : amostra?.plantulasEmergidas7dias;
+
     const newAvaliacao: Avaliacao = {
       ...avaliacaoData,
       id,
+      plantulasEmergidas7dias,
       fortes,
       intermediarias,
       fracas,
@@ -577,14 +622,23 @@ class StorageService {
     // Salvar no Firestore
     await setDoc(doc(db, 'avaliacoes', id), sanitizedAvaliacao);
 
+    // Atualização no cache local de avaliações
+    const avlIdx = this.avaliacoes.findIndex(a => a.id === id);
+    if (avlIdx !== -1) {
+      this.avaliacoes[avlIdx] = newAvaliacao;
+    } else {
+      this.avaliacoes.unshift(newAvaliacao);
+    }
+
     // Se amostra existir, atualizar status e flags de leitura
     if (amostra) {
       const is7d = avaliacaoData.tipoLeitura === '7_dias';
       const updatedAmostra: Amostra = {
         ...amostra,
         status: is7d ? 'Pendente' : 'Concluído',
-        leitura7diasRealizada: true,
-        dataRealizacao7dias: is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : (amostra.dataRealizacao7dias || avaliacaoData.dataAvaliacao),
+        leitura7diasRealizada: amostra.leitura7diasRealizada || is7d,
+        dataRealizacao7dias: amostra.dataRealizacao7dias || (is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : undefined),
+        plantulasEmergidas7dias: plantulasEmergidas7dias !== undefined ? plantulasEmergidas7dias : amostra.plantulasEmergidas7dias,
         leitura10diasRealizada: !is7d,
         dataRealizacao10dias: !is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : amostra.dataRealizacao10dias,
         dataAtualizacao: new Date().toISOString(),

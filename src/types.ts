@@ -26,6 +26,9 @@ export interface Amostra {
   dataLeitura10dias?: string; // Calculado: dataSemeadura + 10 dias
   leitura7diasRealizada?: boolean;
   dataRealizacao7dias?: string;
+  plantulasEmergidas7dias?: number; // Quantidade de plântulas emergidas registradas na leitura de 7 dias
+  usuarioLeitura7dias?: string;
+  obsLeitura7dias?: string;
   leitura10diasRealizada?: boolean;
   dataRealizacao10dias?: string;
 }
@@ -34,6 +37,7 @@ export interface Avaliacao {
   id: string;
   amostraId: string;
   tipoLeitura?: '7_dias' | '10_dias' | 'final';
+  plantulasEmergidas7dias?: number; // Referência da leitura de 7 dias
   fortes: number;
   intermediarias: number;
   fracas: number;

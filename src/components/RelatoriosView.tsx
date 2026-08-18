@@ -244,15 +244,21 @@ export const RelatoriosView: React.FC<RelatoriosViewProps> = ({ currentUser, onO
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 justify-end">
+                  {amostra.plantulasEmergidas7dias !== undefined && (
+                    <span className="text-[11px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full" title="Contagem de Emergência aos 7 dias">
+                      🌱 7d: {amostra.plantulasEmergidas7dias}%
+                    </span>
+                  )}
+
                   {avaliacao ? (
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                       avaliacao.resultadoAprovacao === 'Aprovado' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}>
-                      {avaliacao.germinacao}% ({avaliacao.resultadoAprovacao})
+                      10d: {avaliacao.germinacao}% ({avaliacao.resultadoAprovacao})
                     </span>
                   ) : (
                     <span className="text-[11px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-                      PENDENTE
+                      10D PENDENTE
                     </span>
                   )}
 

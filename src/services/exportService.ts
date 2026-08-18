@@ -11,6 +11,9 @@ export const exportService = {
 
     const dataRows = amostras.map(amostra => {
       const avaliacao = avaliacoes.find(a => a.amostraId === amostra.id);
+      const emerg7d = amostra.plantulasEmergidas7dias !== undefined 
+        ? amostra.plantulasEmergidas7dias 
+        : (avaliacao?.plantulasEmergidas7dias !== undefined ? avaliacao.plantulasEmergidas7dias : undefined);
 
       return {
         'Protocolo': amostra.protocolo,
@@ -20,20 +23,23 @@ export const exportService = {
         'Peneira': amostra.peneira,
         'Categoria': amostra.categoria,
         'Safra': amostra.safra,
-        'Data Semeadura': amostra.dataSemeadura,
-        'Fortes': avaliacao ? avaliacao.fortes : '-',
-        'Intermediárias': avaliacao ? avaliacao.intermediarias : '-',
-        'Fracas': avaliacao ? avaliacao.fracas : '-',
-        'Anormais': avaliacao ? (avaliacao.anormais ?? 0) : '-',
-        'Mortas': avaliacao ? avaliacao.mortas : '-',
-        'Germinação (%)': avaliacao ? `${avaliacao.germinacao}%` : '-',
+        'Data Lançamento': amostra.dataSemeadura,
+        'Prev. Leitura 7d': amostra.dataLeitura7dias || '-',
+        'Prev. Leitura 10d': amostra.dataLeitura10dias || '-',
+        'Emergência 7 Dias (%)': emerg7d !== undefined ? `${emerg7d}%` : '-',
+        'Fortes (10d)': avaliacao ? avaliacao.fortes : '-',
+        'Intermediárias (10d)': avaliacao ? avaliacao.intermediarias : '-',
+        'Fracas (10d)': avaliacao ? avaliacao.fracas : '-',
+        'Anormais (10d)': avaliacao ? (avaliacao.anormais ?? 0) : '-',
+        'Mortas (10d)': avaliacao ? avaliacao.mortas : '-',
+        'Germinação Final (%)': avaliacao ? `${avaliacao.germinacao}%` : '-',
         'Anormais (%)': avaliacao ? `${avaliacao.percentualAnormais ?? avaliacao.anormais ?? 0}%` : '-',
         'Mortas (%)': avaliacao ? `${avaliacao.percentualMortas}%` : '-',
         'Resultado CQ': avaliacao ? avaliacao.resultadoAprovacao : 'Pendente',
         'Avaliador / Responsável': avaliacao ? avaliacao.usuarioAvaliador : amostra.responsavel,
         'Data da Avaliação': avaliacao ? `${avaliacao.dataAvaliacao} ${avaliacao.horaAvaliacao}` : '-',
         'Status Amostra': amostra.status,
-        'Observações': avaliacao?.observacoes || amostra.observacoes || '',
+        'Observações': avaliacao?.observacoes || amostra.obsLeitura7dias || amostra.observacoes || '',
       };
     });
 

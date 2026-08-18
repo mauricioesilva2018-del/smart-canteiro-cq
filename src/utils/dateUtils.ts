@@ -131,9 +131,16 @@ export function getAmostraLeituraInfo(amostra: Amostra, avaliacao?: Avaliacao): 
   const is10dAtrasada = diffDays10d < 0;
 
   // Determinar se leitura de 7d ou 10d foi realizada
-  const isConcluido = amostra.status === 'Concluído' || !!avaliacao;
-  const leitura7dRealizada = Boolean(amostra.leitura7diasRealizada || (isConcluido && avaliacao?.tipoLeitura !== '10_dias') || (isConcluido && diffDays7d <= 0));
-  const leitura10dRealizada = Boolean(amostra.leitura10diasRealizada || (isConcluido && (avaliacao?.tipoLeitura === '10_dias' || diffDays10d <= 0)));
+  const isConcluido = amostra.status === 'Concluído' || !!avaliacao || !!amostra.leitura10diasRealizada;
+  const leitura7dRealizada = Boolean(
+    amostra.leitura7diasRealizada || 
+    amostra.plantulasEmergidas7dias !== undefined || 
+    isConcluido
+  );
+  const leitura10dRealizada = Boolean(
+    amostra.leitura10diasRealizada || 
+    isConcluido
+  );
 
   let statusGeral: StatusLeituraType = 'FUTURA';
   let statusLabel = `Faltam ${diffDays7d} dias`;

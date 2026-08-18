@@ -402,6 +402,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                               <span title="Leitura de 7 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
                             )}
                           </div>
+                          {amostra.plantulasEmergidas7dias !== undefined && (
+                            <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                              {amostra.plantulasEmergidas7dias} emergidas
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-3 px-3 font-semibold text-[#1b4332]">
