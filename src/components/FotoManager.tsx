@@ -46,6 +46,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
             file.name,
             `Foto anexada em ${new Date().toLocaleTimeString('pt-BR')}`
           );
+          setToast({ type: 'success', message: 'Foto salva com segurança no dispositivo!' });
           refreshFotos();
         }
       };
@@ -140,6 +141,23 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
                 alt={foto.nome || 'Foto canteiro'}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
+
+              {/* Status Badge (Offline-First Indicator) */}
+              <div className="absolute top-1.5 left-1.5 z-10">
+                {foto.syncStatus === 'erro' ? (
+                  <span className="bg-rose-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                    🔴 Erro
+                  </span>
+                ) : foto.syncStatus === 'pendente' || foto.syncStatus === 'sincronizando' ? (
+                  <span className="bg-amber-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                    🟠 No Dispositivo
+                  </span>
+                ) : (
+                  <span className="bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                    🟢 Sincronizado
+                  </span>
+                )}
+              </div>
 
               {/* Overlay Controls */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">

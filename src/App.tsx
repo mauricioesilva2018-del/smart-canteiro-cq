@@ -6,11 +6,13 @@ import { NovaAmostraModal } from './components/NovaAmostraModal';
 import { CanteirosListView } from './components/CanteirosListView';
 import { AvaliacaoView } from './components/AvaliacaoView';
 import { RelatoriosView } from './components/RelatoriosView';
+import { QualidadeView } from './components/qualidade/QualidadeView';
 import { UsuariosView } from './components/UsuariosView';
 import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { QRCodeModal } from './components/QRCodeModal';
 import { QRScannerModal } from './components/QRScannerModal';
 import { LoginScreen } from './components/LoginScreen';
+import { SyncStatusModal } from './components/SyncStatusModal';
 
 import { storageService } from './services/storageService';
 import { Amostra, Usuario } from './types';
@@ -25,7 +27,8 @@ export default function App() {
 
   // Estado do Modo Offline e Fila de Sincronização
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
-  const [pendingSyncCount, setPendingSyncCount] = useState<number>(storageService.getSyncQueue().length);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(storageService.getPendingSyncCount());
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
 
   // Modais e Seleções
   const [isNovaAmostraOpen, setIsNovaAmostraOpen] = useState(false);
@@ -37,7 +40,10 @@ export default function App() {
 
   // Sincronização de eventos de rede e storage
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      storageService.processSyncQueue();
+    };
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
@@ -45,6 +51,7 @@ export default function App() {
 
     const unsubscribe = storageService.subscribe(() => {
       setCurrentUser(storageService.getCurrentUser());
+      setPendingSyncCount(storageService.getPendingSyncCount());
     });
 
     return () => {
@@ -65,21 +72,8 @@ export default function App() {
     return <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />;
   }
 
-  // Atualiza contagem da fila de sync
-  const updateSyncCount = () => {
-    setPendingSyncCount(storageService.getSyncQueue().length);
-  };
-
   const handleTriggerSync = () => {
-    const queue = storageService.getSyncQueue();
-    if (queue.length === 0) return;
-
-    // Simula sincronização com banco de dados em nuvem
-    setTimeout(() => {
-      storageService.clearSyncQueue();
-      updateSyncCount();
-      alert(`Sincronização concluída! ${queue.length} registros foram sincronizados com o servidor.`);
-    }, 1200);
+    setIsSyncModalOpen(true);
   };
 
   // Navegação para Avaliação
@@ -192,6 +186,11 @@ export default function App() {
             <RelatoriosView currentUser={currentUser} onOpenAvaliacao={handleOpenAvaliacao} />
           )}
 
+          {/* TAB: CONTROLE DE QUALIDADE DE LOTES */}
+          {activeTab === 'qualidade' && (
+            <QualidadeView />
+          )}
+
           {/* TAB 5: USUÁRIOS E PERMISSÕES */}
           {activeTab === 'usuarios' && (
             <UsuariosView
@@ -216,7 +215,6 @@ export default function App() {
           onClose={() => setIsNovaAmostraOpen(false)}
           onSuccess={(newAmostra) => {
             setIsNovaAmostraOpen(false);
-            updateSyncCount();
             handleOpenAvaliacao(newAmostra.id);
           }}
         />
@@ -245,6 +243,13 @@ export default function App() {
           }}
         />
       )}
+
+      {/* MODAL: CENTRAL DE SINCRONIZAÇÃO OFFLINE */}
+      <SyncStatusModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        isOnline={isOnline}
+      />
 
     </div>
   );

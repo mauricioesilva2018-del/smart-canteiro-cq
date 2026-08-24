@@ -4,13 +4,14 @@ import {
   PlusCircle, 
   Sprout, 
   ClipboardCheck, 
+  ShieldCheck,
   FileSpreadsheet, 
   Users, 
   Settings,
   X
 } from 'lucide-react';
 
-export type TabType = 'dashboard' | 'nova-amostra' | 'canteiros' | 'avaliacoes' | 'relatorios' | 'usuarios' | 'configuracoes';
+export type TabType = 'dashboard' | 'nova-amostra' | 'canteiros' | 'avaliacoes' | 'qualidade' | 'relatorios' | 'usuarios' | 'configuracoes';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -30,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'nova-amostra', label: '+ Nova Amostra', icon: PlusCircle, highlight: true },
     { id: 'canteiros', label: 'Canteiros', icon: Sprout },
     { id: 'avaliacoes', label: 'Avaliações', icon: ClipboardCheck },
+    { id: 'qualidade', label: 'Qualidade', icon: ShieldCheck },
     { id: 'relatorios', label: 'Relatórios', icon: FileSpreadsheet },
     { id: 'usuarios', label: 'Usuários', icon: Users },
     { id: 'configuracoes', label: 'Configurações', icon: Settings },

@@ -44,6 +44,51 @@
         "read": "true",
         "write": "true"
       }
+    },
+    "qualidade_lotes": {
+      "title": "Lotes de Qualidade",
+      "description": "Lotes de sementes com controle de validade, conformidade e histórico",
+      "type": "collection",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      }
+    },
+    "analises_qualidade": {
+      "title": "Análises e Reanálises de Qualidade",
+      "description": "Resultados de testes físicos e fisiológicos de lotes de sementes",
+      "type": "collection",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      }
+    },
+    "parametros_qualidade_cultura": {
+      "title": "Parâmetros por Cultura",
+      "description": "Configuração flexível de testes, limites mínimos, máximos e metas por cultura",
+      "type": "collection",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      }
+    },
+    "auditoria_qualidade": {
+      "title": "Auditoria de Qualidade",
+      "description": "Registro imutável de alterações, cadastros e reanálises",
+      "type": "collection",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      }
+    },
+    "config_termo_conformidade": {
+      "title": "Configuração do Termo de Conformidade",
+      "description": "Dados da empresa produtora, RENASEM, Responsável Técnico e declaração do Termo Oficial MAPA",
+      "type": "collection",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      }
     }
   }
 }

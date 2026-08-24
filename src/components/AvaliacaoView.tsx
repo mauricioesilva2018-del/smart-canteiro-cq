@@ -275,21 +275,24 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       });
 
       setExistingAvaliacao(saved);
+      const isOnline = typeof window !== 'undefined' && navigator.onLine;
       setToast({
         type: 'success',
-        message: 'Avaliação Final (10 dias) salva com sucesso no Firestore!'
+        message: isOnline 
+          ? 'Avaliação Final (10 dias) salva com sucesso!' 
+          : 'Salvo no dispositivo com segurança. Aguardando conexão para envio.'
       });
     } catch (error) {
       setToast({
         type: 'error',
-        message: `Erro ao salvar avaliação final: ${error instanceof Error ? error.message : String(error)}`
+        message: `Erro ao salvar avaliação: ${error instanceof Error ? error.message : String(error)}`
       });
     } finally {
       setIsSaving10d(false);
     }
   };
 
-  // --- AÇÃO: FINALIZAR AVALIAÇÃO DE 10 DIAS ---
+  // --- AÇÃO: FINALIZAR AVALIAÇÃO DE 10 DIAS (100% OFFLINE-FIRST) ---
   const handleOpenFinalizeModal = (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -314,6 +317,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       const dataAvaliacao = now.toISOString().split('T')[0];
       const horaAvaliacao = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+      // Salva localmente via IndexedDB instantaneamente (sem dependência de rede)
       const saved = await storageService.saveAvaliacao({
         amostraId: amostra.id,
         tipoLeitura: '10_dias',
@@ -331,14 +335,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
       setExistingAvaliacao(saved);
       setShowFinalizeConfirmModal(false);
+      setIsFinalizing(false);
+
+      const isOnline = typeof window !== 'undefined' && navigator.onLine;
       setToast({
         type: 'success',
-        message: 'Avaliação Final concluída com sucesso! Registro marcado como CONCLUÍDO.'
+        message: isOnline
+          ? 'Avaliação Final concluída com sucesso! Registro marcado como CONCLUÍDO.'
+          : 'Salvo no dispositivo. Canteiro finalizado localmente com sucesso!'
       });
 
       setTimeout(() => {
         onBack();
-      }, 1000);
+      }, 700);
     } catch (error) {
       setToast({
         type: 'error',

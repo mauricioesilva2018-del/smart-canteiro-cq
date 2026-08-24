@@ -1,6 +1,6 @@
 {
   "name": "Smart Canteiro CQ",
-  "description": "Sistema de Controle de Qualidade de sementes, avaliação de canteiros, fotos e relatórios.",
+  "description": "Sistema de Controle de Qualidade de Sementes, Avaliação de Canteiros, Laudos, Reanálises e Termos de Conformidade.",
   "requestFramePermissions": [
     "camera"
   ],
