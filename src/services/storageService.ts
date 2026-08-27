@@ -40,6 +40,7 @@ import {
 } from '../types';
 import { indexedDbService } from './indexedDbService';
 import { calculateLeituraDates, addDaysToDate, getTodayBR, getDaysDifference } from '../utils/dateUtils';
+import { compressBase64Image } from '../utils/imageUtils';
 
 
 const STORAGE_KEYS = {
@@ -852,15 +853,17 @@ class StorageService {
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
+        this.syncAllPendingFotos();
         this.processSyncQueue();
       });
 
-      // Background heartbeat sync worker a cada 15 segundos
+      // Background heartbeat sync worker a cada 10 segundos
       setInterval(() => {
         if (navigator.onLine) {
+          this.syncAllPendingFotos();
           this.processSyncQueue();
         }
-      }, 15000);
+      }, 10000);
     }
   }
 
@@ -1712,6 +1715,107 @@ class StorageService {
   }
 
   /**
+   * Sincroniza especificamente todas as fotos com status pendente (🟠) do IndexedDB para o Firestore.
+   * Garante que nenhuma foto seja perdida ou excluída antes da confirmação do upload.
+   * Não duplica fotos (mantém exatamente o mesmo ID e vinculação com amostra/canteiro/avaliação).
+   */
+  async syncAllPendingFotos(): Promise<{ total: number; synced: number; failed: number }> {
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      return { total: 0, synced: 0, failed: 0 };
+    }
+
+    try {
+      // 1. Obtém todas as fotos do IndexedDB
+      const allLocalFotos = await indexedDbService.getAllFotosLocal();
+      const pendingFotos = allLocalFotos.filter(
+        f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro' || !f.syncStatus
+      );
+
+      if (pendingFotos.length === 0) {
+        return { total: 0, synced: 0, failed: 0 };
+      }
+
+      // 2. Garante autenticação
+      try {
+        await Promise.race([
+          this.ensureFirebaseAuth(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 3000))
+        ]);
+      } catch (authErr) {
+        console.warn('Aviso auth durante sincronização de fotos:', authErr);
+      }
+
+      let syncedCount = 0;
+      let failedCount = 0;
+
+      for (const foto of pendingFotos) {
+        try {
+          // Atualiza status transitório em memória e no IndexedDB
+          foto.syncStatus = 'sincronizando';
+          await indexedDbService.saveFotoLocal(foto);
+          const fIdx = this.fotos.findIndex(f => f.id === foto.id);
+          if (fIdx >= 0) {
+            this.fotos[fIdx].syncStatus = 'sincronizando';
+          }
+          this.notify();
+
+          // Comprime a foto se necessário para garantir limite < 1MB do Firestore
+          let finalBase64 = foto.foto;
+          if (foto.foto && foto.foto.startsWith('data:image')) {
+            const compressed = await compressBase64Image(foto.foto, 1280, 1280, 0.82);
+            if (compressed) finalBase64 = compressed;
+          }
+
+          const fotoToSave: FotoAmostra = {
+            ...foto,
+            foto: finalBase64,
+            syncStatus: 'sincronizado',
+          };
+
+          const sanitized = this.sanitizeForFirestore(fotoToSave);
+          // Grava no Firestore na coleção 'fotos' com o mesmo ID
+          await setDoc(doc(db, 'fotos', foto.id), sanitized);
+
+          // SÓ APÓS CONFIRMAÇÃO DO FIRESTORE:
+          foto.syncStatus = 'sincronizado';
+          foto.foto = finalBase64;
+          await indexedDbService.saveFotoLocal(foto);
+
+          if (fIdx >= 0) {
+            this.fotos[fIdx] = { ...foto };
+          } else {
+            this.fotos.unshift({ ...foto });
+          }
+
+          // Remove item da fila de sync se existir
+          await indexedDbService.removeSyncItem('sync-foto-' + foto.id);
+          syncedCount++;
+        } catch (fotoErr) {
+          console.error(`Falha ao sincronizar foto ${foto.id}:`, fotoErr);
+          // NUNCA exclui a foto local. Mantém como 'pendente' para tentar novamente
+          foto.syncStatus = 'pendente';
+          await indexedDbService.saveFotoLocal(foto);
+          const fIdx = this.fotos.findIndex(f => f.id === foto.id);
+          if (fIdx >= 0) {
+            this.fotos[fIdx].syncStatus = 'pendente';
+          }
+          failedCount++;
+        }
+      }
+
+      // Atualiza contadores e notifica listeners
+      const remainingPending = await indexedDbService.getPendingSyncItems();
+      this.pendingSyncCount = remainingPending.length;
+      this.notify();
+
+      return { total: pendingFotos.length, synced: syncedCount, failed: failedCount };
+    } catch (globalErr) {
+      console.error('Erro global ao sincronizar fotos pendentes:', globalErr);
+      return { total: 0, synced: 0, failed: 0 };
+    }
+  }
+
+  /**
    * Processa a fila de sincronização em segundo plano.
    * Conecta com Firestore de forma segura com timeout e tratamento de erros.
    */
@@ -1722,9 +1826,14 @@ class StorageService {
     this.syncRunning = true;
 
     try {
+      // 1. Sincroniza fotos pendentes do IndexedDB primeiro
+      await this.syncAllPendingFotos();
+
       const pendingItems = await indexedDbService.getPendingSyncItems();
       if (pendingItems.length === 0) {
-        this.pendingSyncCount = 0;
+        const localFotos = await indexedDbService.getAllFotosLocal();
+        const pendingFotos = localFotos.filter(f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro');
+        this.pendingSyncCount = pendingFotos.length;
         this.notify();
         this.syncRunning = false;
         return;
@@ -1747,11 +1856,18 @@ class StorageService {
 
           if (item.tipo === 'FOTO_ADD') {
             const fotoData = item.payload as FotoAmostra;
-            const sanitized = this.sanitizeForFirestore(fotoData);
+            let finalBase64 = fotoData.foto;
+            if (fotoData.foto && fotoData.foto.startsWith('data:image')) {
+              const compressed = await compressBase64Image(fotoData.foto, 1280, 1280, 0.82);
+              if (compressed) finalBase64 = compressed;
+            }
+            const fotoToSave = { ...fotoData, foto: finalBase64, syncStatus: 'sincronizado' as const };
+            const sanitized = this.sanitizeForFirestore(fotoToSave);
             await setDoc(doc(db, 'fotos', fotoData.id), sanitized);
             
             // Marca a foto localmente como sincronizada (🟢)
             fotoData.syncStatus = 'sincronizado';
+            fotoData.foto = finalBase64;
             await indexedDbService.saveFotoLocal(fotoData);
             const fIdx = this.fotos.findIndex(f => f.id === fotoData.id);
             if (fIdx >= 0) {
@@ -1806,7 +1922,9 @@ class StorageService {
       }
 
       const remaining = await indexedDbService.getPendingSyncItems();
-      this.pendingSyncCount = remaining.length;
+      const localFotos = await indexedDbService.getAllFotosLocal();
+      const pendingFotos = localFotos.filter(f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro');
+      this.pendingSyncCount = remaining.length + pendingFotos.length;
       this.notify();
     } catch (globalErr) {
       console.error('Erro no ciclo de sincronização:', globalErr);
@@ -1816,17 +1934,21 @@ class StorageService {
   }
 
   /**
-   * Força sincronização manual de todos os itens pendentes.
+   * Força sincronização manual de todos os itens pendentes e fotos.
    */
   async syncNow(): Promise<{ success: boolean; syncedCount: number; errorsCount: number }> {
+    const fotoSyncRes = await this.syncAllPendingFotos();
     await this.processSyncQueue();
     const all = await indexedDbService.getAllSyncItems();
     const errors = all.filter(i => i.status === 'erro');
     const remainingPending = all.filter(i => i.status === 'pendente' || i.status === 'sincronizando');
+    const localFotos = await indexedDbService.getAllFotosLocal();
+    const pendingFotos = localFotos.filter(f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro');
+    
     return {
-      success: errors.length === 0 && remainingPending.length === 0,
-      syncedCount: all.length - errors.length - remainingPending.length,
-      errorsCount: errors.length + remainingPending.length,
+      success: errors.length === 0 && remainingPending.length === 0 && pendingFotos.length === 0,
+      syncedCount: (all.length - errors.length - remainingPending.length) + fotoSyncRes.synced,
+      errorsCount: errors.length + remainingPending.length + pendingFotos.length,
     };
   }
 

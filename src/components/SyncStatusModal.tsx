@@ -52,9 +52,33 @@ export const SyncStatusModal: React.FC<SyncStatusModalProps> = ({
   const errorItems = syncItems.filter(i => i.status === 'erro');
   const syncedItems = syncItems.filter(i => i.status === 'sincronizado');
 
+  const pendingPhotosList = storageService.getFotos().filter(
+    f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro'
+  );
   const pendingPhotos = pendingItems.filter(i => i.tipo === 'FOTO_ADD');
+  const totalPendingPhotosCount = Math.max(pendingPhotos.length, pendingPhotosList.length);
   const pendingAvaliacoes = pendingItems.filter(i => i.tipo === 'AVALIACAO_SAVE' || i.tipo === 'LEITURA_7DIAS');
   const pendingCanteiros = pendingItems.filter(i => i.tipo === 'AMOSTRA_SAVE');
+
+  const handleSyncFotosOnly = async () => {
+    setIsSyncing(true);
+    setLastSyncResult(null);
+    try {
+      const res = await storageService.syncAllPendingFotos();
+      if (res.synced > 0) {
+        setLastSyncResult(`Sucesso! ${res.synced} foto(s) sincronizada(s) com o Firebase.`);
+      } else if (res.failed > 0) {
+        setLastSyncResult(`${res.failed} foto(s) não puderam ser enviadas. Verifique a conexão.`);
+      } else {
+        setLastSyncResult('Todas as fotos já estão sincronizadas com o Firebase!');
+      }
+      await refreshSyncItems();
+    } catch (e: any) {
+      setLastSyncResult(`Erro ao sincronizar fotos: ${e.message || String(e)}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleSyncNow = async () => {
     setIsSyncing(true);
@@ -172,7 +196,7 @@ export const SyncStatusModal: React.FC<SyncStatusModalProps> = ({
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Fotos Pendentes</span>
             <span className="text-xl font-black text-gray-900 mt-1 flex items-center justify-center gap-1.5">
               <ImageIcon className="w-4 h-4 text-amber-600" />
-              {pendingPhotos.length}
+              {totalPendingPhotosCount}
             </span>
           </div>
 
@@ -187,7 +211,7 @@ export const SyncStatusModal: React.FC<SyncStatusModalProps> = ({
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Status Geral</span>
             <div className="mt-1 flex items-center justify-center">
-              {pendingItems.length === 0 && errorItems.length === 0 ? (
+              {pendingItems.length === 0 && errorItems.length === 0 && totalPendingPhotosCount === 0 ? (
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   100% Sincronizado
@@ -200,7 +224,7 @@ export const SyncStatusModal: React.FC<SyncStatusModalProps> = ({
               ) : (
                 <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  {pendingItems.length} Pendentes
+                  {pendingItems.length + totalPendingPhotosCount} Pendentes
                 </span>
               )}
             </div>
@@ -258,25 +282,41 @@ export const SyncStatusModal: React.FC<SyncStatusModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-gray-100">
           <button
             type="button"
             onClick={onClose}
             disabled={isSyncing}
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer"
           >
             Fechar
           </button>
 
-          <button
-            type="button"
-            onClick={handleSyncNow}
-            disabled={isSyncing}
-            className="px-5 py-2.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 text-[#d8f3dc] ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Sincronizando Agora...' : 'Sincronizar Agora'}</span>
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {totalPendingPhotosCount > 0 && (
+              <button
+                type="button"
+                id="btn-sync-fotos-modal"
+                onClick={handleSyncFotosOnly}
+                disabled={isSyncing}
+                className="flex-1 sm:flex-initial px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <ImageIcon className="w-4 h-4 text-amber-200" />
+                <span>SINCRONIZAR FOTOS ({totalPendingPhotosCount})</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              id="btn-sync-geral-modal"
+              onClick={handleSyncNow}
+              disabled={isSyncing}
+              className="flex-1 sm:flex-initial px-5 py-2.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 text-[#d8f3dc] ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Tudo'}</span>
+            </button>
+          </div>
         </div>
 
       </div>

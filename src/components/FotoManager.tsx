@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FotoAmostra } from '../types';
 import { storageService } from '../services/storageService';
-import { Camera, Image as ImageIcon, Trash2, ZoomIn, X, Plus, Loader2 } from 'lucide-react';
+import { Camera, Image as ImageIcon, Trash2, ZoomIn, X, Plus, Loader2, RefreshCw, Clock, CheckCircle2 } from 'lucide-react';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
 import { compressImageFile } from '../utils/imageUtils';
@@ -16,6 +16,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
   const [activeZoomFoto, setActiveZoomFoto] = useState<FotoAmostra | null>(null);
   const [fotoToDelete, setFotoToDelete] = useState<FotoAmostra | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +64,44 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
     }
   };
 
+  const handleSyncPendingFotos = async () => {
+    if (!navigator.onLine) {
+      setToast({ 
+        type: 'error', 
+        message: 'Dispositivo sem internet no momento. Suas fotos continuam 100% salvas no aparelho.' 
+      });
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const res = await storageService.syncAllPendingFotos();
+      if (res.synced > 0) {
+        setToast({ 
+          type: 'success', 
+          message: `Sucesso! ${res.synced} foto(s) sincronizada(s) com a nuvem (🟢).` 
+        });
+      } else if (res.failed > 0) {
+        setToast({ 
+          type: 'error', 
+          message: `${res.failed} foto(s) pendentes falharam no envio. Tente novamente.` 
+        });
+      } else {
+        setToast({ 
+          type: 'success', 
+          message: 'Todas as fotos já estão sincronizadas com o servidor (🟢).' 
+        });
+      }
+      refreshFotos();
+    } catch (err: any) {
+      setToast({ 
+        type: 'error', 
+        message: `Falha na sincronização: ${err?.message || String(err)}` 
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleConfirmDeleteFoto = async () => {
     if (!fotoToDelete) return;
     try {
@@ -83,9 +122,46 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
     }
   };
 
+  const pendingCount = fotos.filter(f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro').length;
+
   return (
     <div className="space-y-4">
       
+      {/* Botão e Banner de Sincronização Manual */}
+      <div className={`flex flex-col sm:flex-row items-center justify-between gap-2 p-3 rounded-xl border transition-all ${
+        pendingCount > 0 
+          ? 'bg-amber-50 border-amber-200 text-amber-900' 
+          : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+      }`}>
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          {pendingCount > 0 ? (
+            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          )}
+          <span>
+            {pendingCount > 0 
+              ? `${pendingCount} foto${pendingCount > 1 ? 's' : ''} no dispositivo aguardando envio para o servidor.` 
+              : 'Todas as fotos deste canteiro estão sincronizadas com o Firebase.'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          id="btn-sync-fotos-pendentes"
+          onClick={handleSyncPendingFotos}
+          disabled={isSyncing || isProcessing}
+          className={`w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 ${
+            pendingCount > 0
+              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+              : 'bg-[#1b4332] hover:bg-[#2d6a4f] text-white'
+          } disabled:opacity-50`}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+          <span>{isSyncing ? 'Sincronizando...' : 'SINCRONIZAR FOTOS PENDENTES'}</span>
+        </button>
+      </div>
+
       {/* Action Buttons: Camera & Gallery */}
       {!readOnly && (
         <div className="flex items-center gap-3">
