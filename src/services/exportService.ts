@@ -205,54 +205,177 @@ export const exportService = {
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('3. REGISTRO FOTOGRÁFICO DO CANTEIRO', 18, 152);
+    
+    const totalFotos = fotos ? fotos.length : 0;
+    doc.text(`3. REGISTRO FOTOGRÁFICO DO CANTEIRO ${totalFotos > 0 ? `(${totalFotos} Foto${totalFotos > 1 ? 's' : ''})` : ''}`, 18, 150);
 
-    if (fotos && fotos.length > 0) {
-      let yOffset = 157;
-      let xOffset = 18;
-      
-      fotos.slice(0, 4).forEach((foto, index) => {
+    if (totalFotos > 0) {
+      if (totalFotos === 1) {
+        // 1 foto centralizada e destacada
+        const foto = fotos[0];
         try {
-          doc.addImage(foto.foto, 'JPEG', xOffset, yOffset, 80, 55);
-          doc.setDrawColor(200, 200, 200);
-          doc.rect(xOffset, yOffset, 80, 55, 'D');
+          const imgFormat = foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(foto.foto, imgFormat, 55, 154, 100, 62);
+          doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+          doc.setLineWidth(0.4);
+          doc.rect(55, 154, 100, 62, 'D');
 
-          doc.setFontSize(7.5);
-          doc.setTextColor(60, 60, 60);
-          doc.text(foto.nome || `Foto ${index + 1}`, xOffset, yOffset + 58);
-
-          if (index % 2 === 0) {
-            xOffset = 112;
-          } else {
-            xOffset = 18;
-            yOffset += 65;
+          doc.setFontSize(8);
+          doc.setTextColor(50, 50, 50);
+          doc.setFont('helvetica', 'bold');
+          doc.text(foto.nome || 'Foto de Acompanhamento do Canteiro', 105, 221, { align: 'center' });
+          if (foto.dataUpload) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 100, 100);
+            const dataStr = new Date(foto.dataUpload).toLocaleDateString('pt-BR');
+            const horaStr = new Date(foto.dataUpload).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            doc.text(`Registrado em: ${dataStr} às ${horaStr}`, 105, 226, { align: 'center' });
           }
         } catch (err) {
-          console.error('Erro ao adicionar foto ao PDF:', err);
+          console.error('Erro ao renderizar foto única no PDF:', err);
         }
-      });
+      } else {
+        // 2 fotos lado a lado na Página 1
+        const maxPage1 = Math.min(2, totalFotos);
+        for (let i = 0; i < maxPage1; i++) {
+          const foto = fotos[i];
+          const xPos = i === 0 ? 16 : 108;
+          try {
+            const imgFormat = foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+            doc.addImage(foto.foto, imgFormat, xPos, 154, 86, 56);
+            doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.setLineWidth(0.4);
+            doc.rect(xPos, 154, 86, 56, 'D');
+
+            doc.setFontSize(8);
+            doc.setTextColor(50, 50, 50);
+            doc.setFont('helvetica', 'bold');
+            const caption = foto.nome ? (foto.nome.length > 35 ? foto.nome.substring(0, 32) + '...' : foto.nome) : `Foto ${i + 1}`;
+            doc.text(caption, xPos + 43, 214, { align: 'center' });
+
+            if (foto.dataUpload) {
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(7);
+              doc.setTextColor(110, 110, 110);
+              const dataStr = new Date(foto.dataUpload).toLocaleDateString('pt-BR');
+              doc.text(`Data: ${dataStr}`, xPos + 43, 218.5, { align: 'center' });
+            }
+          } catch (err) {
+            console.error(`Erro ao renderizar foto ${i + 1} no PDF:`, err);
+          }
+        }
+
+        if (totalFotos > 2) {
+          doc.setFontSize(8);
+          doc.setTextColor(45, 106, 79);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`* Veja o registro fotográfico completo (${totalFotos} fotos) no Anexo Fotográfico na Página 2`, 105, 230, { align: 'center' });
+        }
+      }
     } else {
-      doc.setTextColor(100, 100, 100);
+      doc.setFillColor(248, 249, 250);
+      doc.rect(14, 154, 182, 40, 'F');
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(14, 154, 182, 40, 'D');
+      doc.setTextColor(120, 120, 120);
       doc.setFontSize(9.5);
       doc.setFont('helvetica', 'italic');
-      doc.text('Nenhuma foto foi anexada a esta amostra.', 18, 160);
+      doc.text('Nenhuma foto foi anexada a este canteiro até o momento.', 105, 175, { align: 'center' });
     }
 
-    // Footer Signatures
+    // Footer Signatures (Página 1)
     doc.setDrawColor(180, 180, 180);
     doc.setLineWidth(0.3);
-    doc.line(20, 272, 90, 272);
-    doc.line(120, 272, 190, 272);
+    doc.line(20, 258, 90, 258);
+    doc.line(120, 258, 190, 258);
 
-    doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
+    doc.setFontSize(8.5);
+    doc.setTextColor(60, 60, 60);
+    doc.setFont('helvetica', 'bold');
+    doc.text(avaliacao?.usuarioAvaliador || amostra.responsavel || 'Avaliador de Qualidade', 55, 263, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.text('Avaliador de Qualidade', 55, 276, { align: 'center' });
-    doc.text('Supervisão do Laboratório CQ', 155, 276, { align: 'center' });
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Avaliador Técnico / Controle de Qualidade', 55, 267, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(60, 60, 60);
+    doc.text('Responsável Técnico / Laboratório', 155, 263, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Supervisão e Controle de Qualidade CQ', 155, 267, { align: 'center' });
 
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    doc.text('Smart Canteiro CQ - Sistema de Controle de Qualidade Agricola', 105, 287, { align: 'center' });
+    doc.text('Smart Canteiro CQ — Sistema Profissional de Controle de Qualidade de Sementes', 105, 285, { align: 'center' });
+
+    // --- PÁGINA 2: ANEXO FOTOGRÁFICO COMPLETO (SE HOUVER MAIS DE 2 FOTOS) ---
+    if (totalFotos > 2) {
+      doc.addPage();
+
+      // Header Banner Anexo
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, 210, 28, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('ANEXO FOTOGRÁFICO — REGISTRO DE CANTEIRO', 14, 14);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.text(`Protocolo: ${amostra.protocolo}  |  Cultura: ${amostra.cultura} (${amostra.cultivar})  |  Lote: ${amostra.lote}  |  Safra: ${amostra.safra}`, 14, 21);
+
+      // Grid de Fotos no Anexo (2 colunas)
+      let currentY = 36;
+      for (let idx = 0; idx < fotos.length; idx++) {
+        const foto = fotos[idx];
+        const isLeft = idx % 2 === 0;
+        const xPos = isLeft ? 16 : 108;
+
+        if (idx > 0 && isLeft) {
+          currentY += 76;
+        }
+
+        // Se passar da altura da página, cria nova página
+        if (currentY + 68 > 275) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        try {
+          const imgFormat = foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(foto.foto, imgFormat, xPos, currentY, 86, 56);
+          doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
+          doc.setLineWidth(0.4);
+          doc.rect(xPos, currentY, 86, 56, 'D');
+
+          doc.setFontSize(8);
+          doc.setTextColor(40, 40, 40);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`Foto ${idx + 1}: ${foto.nome || 'Registro do Canteiro'}`, xPos, currentY + 61);
+
+          if (foto.dataUpload) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(100, 100, 100);
+            const dataStr = new Date(foto.dataUpload).toLocaleDateString('pt-BR');
+            const horaStr = new Date(foto.dataUpload).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            doc.text(`Capturado em: ${dataStr} às ${horaStr}`, xPos, currentY + 65.5);
+          }
+        } catch (err) {
+          console.error(`Erro ao adicionar foto ${idx + 1} no anexo do PDF:`, err);
+        }
+      }
+
+      // Rodapé da Página do Anexo
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Smart Canteiro CQ — Anexo Fotográfico — Protocolo ${amostra.protocolo}`, 105, 287, { align: 'center' });
+    }
 
     doc.save(`Laudo_CQ_${amostra.protocolo}_${amostra.cultura}.pdf`);
   }

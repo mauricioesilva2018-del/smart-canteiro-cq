@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FotoAmostra } from '../types';
 import { storageService } from '../services/storageService';
-import { Camera, Image as ImageIcon, Trash2, ZoomIn, X, Plus } from 'lucide-react';
+import { Camera, Image as ImageIcon, Trash2, ZoomIn, X, Plus, Loader2 } from 'lucide-react';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
+import { compressImageFile } from '../utils/imageUtils';
 
 interface FotoManagerProps {
   amostraId: string;
@@ -14,6 +15,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
   const [fotos, setFotos] = useState<FotoAmostra[]>(storageService.getFotosByAmostra(amostraId));
   const [activeZoomFoto, setActiveZoomFoto] = useState<FotoAmostra | null>(null);
   const [fotoToDelete, setFotoToDelete] = useState<FotoAmostra | null>(null);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -31,29 +33,34 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
     return () => unsubscribe();
   }, [amostraId]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    (Array.from(files) as File[]).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        if (base64) {
+    setIsProcessing(true);
+    try {
+      const fileList = Array.from(files) as File[];
+      for (const file of fileList) {
+        // Comprime a imagem para garantir tamanho otimizado (<300KB) e compatibilidade com Firestore
+        const compressedBase64 = await compressImageFile(file, 1280, 1280, 0.82);
+        if (compressedBase64) {
           await storageService.addFoto(
             amostraId,
-            base64,
+            compressedBase64,
             file.name,
-            `Foto anexada em ${new Date().toLocaleTimeString('pt-BR')}`
+            `Foto capturada em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
           );
-          setToast({ type: 'success', message: 'Foto salva com segurança no dispositivo!' });
-          refreshFotos();
         }
-      };
-      reader.readAsDataURL(file);
-    });
-
-    if (e.target) e.target.value = '';
+      }
+      setToast({ type: 'success', message: 'Foto salva com segurança no dispositivo!' });
+      refreshFotos();
+    } catch (err) {
+      console.error('Erro ao processar foto:', err);
+      setToast({ type: 'error', message: 'Erro ao processar imagem.' });
+    } finally {
+      setIsProcessing(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleConfirmDeleteFoto = async () => {
@@ -86,11 +93,20 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
           {/* Camera Trigger */}
           <button
             type="button"
+            disabled={isProcessing}
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1b4332] hover:bg-[#2d6a4f] text-white py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95"
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 ${
+              isProcessing
+                ? 'bg-gray-400 text-white cursor-wait opacity-80'
+                : 'bg-[#1b4332] hover:bg-[#2d6a4f] text-white cursor-pointer'
+            }`}
           >
-            <Camera className="w-5 h-5 text-[#d8f3dc]" />
-            <span>Tirar Foto (Câmera)</span>
+            {isProcessing ? (
+              <Loader2 className="w-5 h-5 text-white animate-spin" />
+            ) : (
+              <Camera className="w-5 h-5 text-[#d8f3dc]" />
+            )}
+            <span>{isProcessing ? 'Processando Foto...' : 'Tirar Foto (Câmera)'}</span>
           </button>
           <input
             ref={cameraInputRef}
@@ -98,14 +114,20 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
             accept="image/*"
             capture="environment"
             className="hidden"
+            disabled={isProcessing}
             onChange={handleFileUpload}
           />
 
           {/* Gallery Trigger */}
           <button
             type="button"
+            disabled={isProcessing}
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all border border-gray-200"
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all border ${
+              isProcessing
+                ? 'bg-gray-200 text-gray-500 border-gray-200 cursor-wait'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-200 cursor-pointer'
+            }`}
           >
             <ImageIcon className="w-5 h-5 text-[#2d6a4f]" />
             <span>Galeria</span>
@@ -116,6 +138,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
             accept="image/*"
             multiple
             className="hidden"
+            disabled={isProcessing}
             onChange={handleFileUpload}
           />
 

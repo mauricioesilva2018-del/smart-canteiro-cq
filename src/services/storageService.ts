@@ -990,6 +990,7 @@ class StorageService {
             dataUpload: '2026-07-22T14:12:00Z',
             nome: 'Avaliação 7º Dia - Vista Superior',
             descricao: 'Desenvolvimento uniforme das plântulas em areia.',
+            syncStatus: 'sincronizado',
           },
           {
             id: 'ft-102-1',
@@ -998,11 +999,40 @@ class StorageService {
             dataUpload: '2026-07-25T10:18:00Z',
             nome: 'Emergência Milho 7 Dias',
             descricao: 'Plântulas fortes e cor coleóptilo normal.',
+            syncStatus: 'sincronizado',
           }
         ];
         await this.seedCollection('fotos', initialFotos);
       } else {
-        this.fotos = snapshot.docs.map(doc => doc.data() as FotoAmostra);
+        const remoteFotos = snapshot.docs.map(doc => {
+          const data = doc.data() as FotoAmostra;
+          return { ...data, syncStatus: 'sincronizado' as const };
+        });
+
+        // Preserva fotos locais pendentes que ainda não foram sincronizadas
+        const fotosMap = new Map<string, FotoAmostra>();
+        
+        // 1. Adiciona fotos remotas do Firestore
+        remoteFotos.forEach(rf => {
+          fotosMap.set(rf.id, rf);
+        });
+
+        // 2. Mantém quaisquer fotos locais pendentes de sincronização
+        this.fotos.forEach(lf => {
+          if (!fotosMap.has(lf.id) || lf.syncStatus === 'pendente' || lf.syncStatus === 'sincronizando') {
+            fotosMap.set(lf.id, lf);
+          }
+        });
+
+        this.fotos = Array.from(fotosMap.values()).sort((a, b) => 
+          new Date(b.dataUpload).getTime() - new Date(a.dataUpload).getTime()
+        );
+
+        // Cacheia localmente no IndexedDB para disponibilidade 100% offline
+        for (const f of this.fotos) {
+          await indexedDbService.saveFotoLocal(f);
+        }
+
         this.notify();
       }
     }, (err) => console.error('Erro em snapshot fotos:', err));
@@ -1436,7 +1466,14 @@ class StorageService {
   }
 
   getFotosByAmostra(amostraId: string): FotoAmostra[] {
-    return this.fotos.filter(f => f.amostraId === amostraId);
+    if (!amostraId) return [];
+    const amostra = this.getAmostraById(amostraId);
+    const targetIds = new Set<string>();
+    targetIds.add(amostraId);
+    if (amostra?.id) targetIds.add(amostra.id);
+    if (amostra?.protocolo) targetIds.add(amostra.protocolo);
+
+    return this.fotos.filter(f => targetIds.has(f.amostraId));
   }
 
   async addFoto(amostraId: string, fotoBase64: string, nome?: string, descricao?: string): Promise<FotoAmostra> {

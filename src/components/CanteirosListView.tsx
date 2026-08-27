@@ -573,6 +573,19 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
                         <button
                           type="button"
+                          onClick={() => {
+                            const fotos = storageService.getFotosByAmostra(amostra.id);
+                            exportService.generateSamplePDF(amostra, avaliacao, fotos);
+                          }}
+                          className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                          title="Baixar Laudo PDF"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-gray-700" />
+                          <span>PDF</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setItemToDelete({ id: amostra.id, name: amostra.protocolo })}
                           className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer"
                         >
