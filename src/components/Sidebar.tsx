@@ -10,6 +10,7 @@ import {
   Settings,
   X
 } from 'lucide-react';
+import { Usuario } from '../types';
 
 export type TabType = 'dashboard' | 'nova-amostra' | 'canteiros' | 'avaliacoes' | 'qualidade' | 'relatorios' | 'usuarios' | 'configuracoes';
 
@@ -18,6 +19,7 @@ interface SidebarProps {
   setActiveTab: (tab: TabType) => void;
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
+  currentUser: Usuario;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -25,17 +27,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   mobileOpen,
   setMobileOpen,
+  currentUser,
 }) => {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'nova-amostra', label: '+ Nova Amostra', icon: PlusCircle, highlight: true },
-    { id: 'canteiros', label: 'Canteiros', icon: Sprout },
-    { id: 'avaliacoes', label: 'Avaliações', icon: ClipboardCheck },
-    { id: 'qualidade', label: 'Qualidade', icon: ShieldCheck },
-    { id: 'relatorios', label: 'Relatórios', icon: FileSpreadsheet },
-    { id: 'usuarios', label: 'Usuários', icon: Users },
-    { id: 'configuracoes', label: 'Configurações', icon: Settings },
+  const allNavItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
+    { id: 'nova-amostra', label: '+ Nova Amostra', icon: PlusCircle, highlight: true, roles: ['Administrador', 'Operador', 'Qualidade'] },
+    { id: 'canteiros', label: 'Canteiros', icon: Sprout, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
+    { id: 'avaliacoes', label: 'Avaliações', icon: ClipboardCheck, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
+    { id: 'qualidade', label: 'Qualidade', icon: ShieldCheck, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
+    { id: 'relatorios', label: 'Relatórios', icon: FileSpreadsheet, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
+    { id: 'usuarios', label: 'Usuários', icon: Users, roles: ['Administrador'] },
+    { id: 'configuracoes', label: 'Configurações', icon: Settings, roles: ['Administrador'] },
   ] as const;
+
+  const allowedItems = allNavItems.filter(item => 
+    item.roles.includes(currentUser.perfil as any)
+  );
 
   const handleSelect = (id: TabType) => {
     setActiveTab(id);
@@ -75,7 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Menu Items */}
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-          {navItems.map((item) => {
+          {allowedItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             const isHighlight = 'highlight' in item && Boolean(item.highlight);
@@ -110,3 +117,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
+

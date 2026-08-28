@@ -4,7 +4,8 @@ import { storageService } from '../services/storageService';
 import { exportService } from '../services/exportService';
 import { 
   Search, Filter, Plus, FileSpreadsheet, FileText, QrCode, 
-  Trash2, ClipboardCheck, ArrowUpDown, Calendar, Sprout, RefreshCw, Edit3, CheckCircle2
+  Trash2, ClipboardCheck, ArrowUpDown, Calendar, Sprout, RefreshCw, Edit3, CheckCircle2,
+  AlertCircle, Database
 } from 'lucide-react';
 import { NovaAmostraModal } from './NovaAmostraModal';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
@@ -28,6 +29,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 }) => {
   const [amostras, setAmostras] = useState<Amostra[]>(storageService.getAmostras());
   const [avaliacoes, setAvaliacoes] = useState(storageService.getAvaliacoes());
+  const [syncState, setSyncState] = useState(storageService.getSyncState());
 
   // Filtro de Busca Global
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,6 +56,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
   const refreshList = () => {
     setAmostras(storageService.getAmostras());
     setAvaliacoes(storageService.getAvaliacoes());
+    setSyncState(storageService.getSyncState());
   };
 
   useEffect(() => {
@@ -310,10 +313,27 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
         )}
       </div>
 
+      {/* Alerta de Cota ou Sincronização Indisponível */}
+      {syncState.isQuotaExceeded && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-900 shadow-sm">
+          <Database className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <p className="font-bold text-sm text-amber-950">
+              Modo Offline / Cota do Servidor Firestore: Dados Preservados
+            </p>
+            <p className="text-amber-800">
+              A cota diária de leituras do Firestore no plano gratuito foi temporariamente atingida.
+              <strong> Seus registros estão seguros e continuam acessíveis no cache local deste dispositivo.</strong>
+              {' '}Nenhum dado foi perdido ou apagado.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Contagem de Resultados */}
       <div className="flex items-center justify-between text-xs font-semibold text-gray-500 px-1">
         <span>Exibindo {filteredAmostras.length} de {amostras.length} amostras</span>
-        <button onClick={refreshList} className="flex items-center gap-1 hover:text-gray-800">
+        <button onClick={refreshList} className="flex items-center gap-1 hover:text-gray-800 cursor-pointer">
           <RefreshCw className="w-3 h-3" /> Atualizar Tabela
         </button>
       </div>
@@ -323,9 +343,21 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
         
         {filteredAmostras.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
-            <Sprout className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-base font-bold text-gray-700">Nenhuma amostra encontrada</p>
-            <p className="text-xs text-gray-500 mt-1">Ajuste seus filtros de busca ou cadastre uma nova amostra.</p>
+            {syncState.isQuotaExceeded && amostras.length === 0 ? (
+              <>
+                <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+                <p className="text-base font-bold text-gray-800">Não foi possível carregar os dados do servidor no momento</p>
+                <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                  A conexão com o servidor atingiu o limite de requisições temporário. Assim que a cota reiniciar ou for ampliada no Firebase Console, todos os registros remotos serão carregados automaticamente.
+                </p>
+              </>
+            ) : (
+              <>
+                <Sprout className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-base font-bold text-gray-700">Nenhuma amostra encontrada</p>
+                <p className="text-xs text-gray-500 mt-1">Ajuste seus filtros de busca ou cadastre uma nova amostra.</p>
+              </>
+            )}
           </div>
         ) : (
           <>

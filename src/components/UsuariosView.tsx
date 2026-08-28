@@ -167,115 +167,111 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
 
       {/* Tabela de Usuários */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-gray-700">
-            <thead className="bg-[#1b4332] text-white uppercase text-[11px] font-bold tracking-wider">
-              <tr>
-                <th className="py-3.5 px-4">Nome de Usuário</th>
-                <th className="py-3.5 px-3">Senha</th>
-                <th className="py-3.5 px-3">Perfil de Acesso</th>
-                <th className="py-3.5 px-3">Status</th>
-                <th className="py-3.5 px-4 text-center">AÇÕES</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {usuarios.map((u) => {
-                const isSelf = u.id === currentUser.id;
+        {usuarios.length === 0 ? (
+          <div className="p-10 text-center text-gray-500">
+            <Users className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm font-bold text-gray-700">Nenhum usuário listado no momento</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Caso a cota de leitura esteja em redefinição, as credenciais e usuários locais são mantidos em segurança.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-gray-700">
+              <thead className="bg-[#1b4332] text-white uppercase text-[11px] font-bold tracking-wider">
+                <tr>
+                  <th className="py-3.5 px-4">Nome de Usuário</th>
+                  <th className="py-3.5 px-3">Senha</th>
+                  <th className="py-3.5 px-3">Perfil de Acesso</th>
+                  <th className="py-3.5 px-3">Status</th>
+                  <th className="py-3.5 px-4 text-center">AÇÕES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {usuarios.map((u) => {
+                  const isSelf = u.id === currentUser.id;
 
-                return (
-                  <tr key={u.id} className="hover:bg-gray-50/80 transition-colors">
-                    
-                    <td className="py-3.5 px-4 font-bold text-gray-900">
-                      <div className="flex items-center gap-2">
-                        <span>{u.nome}</span>
-                        {isSelf && (
-                          <span className="bg-[#b7e4c7] text-[#1b4332] text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                            LOGADO AGORA
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                  return (
+                    <tr key={u.id} className="hover:bg-gray-50/80 transition-colors">
+                      
+                      <td className="py-3.5 px-4 font-bold text-gray-900">
+                        <div className="flex items-center gap-2">
+                          <span>{u.nome}</span>
+                          {isSelf && (
+                            <span className="bg-[#b7e4c7] text-[#1b4332] text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                              LOGADO AGORA
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                    <td className="py-3.5 px-3 font-mono text-gray-600">
-                      <div className="flex items-center gap-1">
-                        <KeyRound className="w-3 h-3 text-gray-400" />
-                        <span>{u.senha || '••••••'}</span>
-                      </div>
-                    </td>
+                      <td className="py-3.5 px-3 font-mono text-gray-600">
+                        <div className="flex items-center gap-1">
+                          <KeyRound className="w-3 h-3 text-gray-400" />
+                          <span>{u.senha || '••••••'}</span>
+                        </div>
+                      </td>
 
-                    <td className="py-3.5 px-3">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                        u.perfil === 'Administrador' 
-                          ? 'bg-purple-100 text-purple-900' 
-                          : u.perfil === 'Operador' || u.perfil === 'Qualidade'
-                          ? 'bg-emerald-100 text-emerald-900' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {u.perfil}
-                      </span>
-                    </td>
+                      <td className="py-3.5 px-3">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                          u.perfil === 'Administrador' 
+                            ? 'bg-purple-100 text-purple-900' 
+                            : u.perfil === 'Operador' || u.perfil === 'Qualidade'
+                            ? 'bg-emerald-100 text-emerald-900' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {u.perfil}
+                        </span>
+                      </td>
 
-                    <td className="py-3.5 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        u.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {u.ativo ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
+                      <td className="py-3.5 px-3">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          u.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {u.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
 
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        
-                        {/* Simular Login */}
-                        <button
-                          onClick={() => {
-                            onUserChange(u);
-                            storageService.setCurrentUser(u);
-                          }}
-                          className="px-2.5 py-1 bg-[#2d6a4f] hover:bg-[#1b4332] text-white rounded-lg text-[10px] font-bold transition-all shadow-xs"
-                          title="Trocar para este perfil de usuário"
-                        >
-                          Usar Perfil
-                        </button>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          {/* Botão EDITAR */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleOpenEdit(u)}
+                              className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#1b4332] border border-emerald-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[11px] cursor-pointer"
+                              title="Editar Usuário"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                              <span>EDITAR</span>
+                            </button>
+                          )}
 
-                        {/* Botão EDITAR */}
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleOpenEdit(u)}
-                            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#1b4332] border border-emerald-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[11px] cursor-pointer"
-                            title="Editar Usuário"
-                          >
-                            <Edit3 className="w-3.5 h-3.5 text-[#2d6a4f]" />
-                            <span>EDITAR</span>
-                          </button>
-                        )}
+                          {/* Botão EXCLUIR */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => setUserToDelete({ id: u.id, name: u.nome })}
+                              disabled={isSelf}
+                              className={`px-2.5 py-1.5 border rounded-lg transition-colors flex items-center gap-1 font-bold text-[11px] ${
+                                isSelf 
+                                  ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed' 
+                                  : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 cursor-pointer'
+                              }`}
+                              title={isSelf ? 'Você não pode excluir a si mesmo' : 'Excluir Usuário'}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>EXCLUIR</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
 
-                        {/* Botão EXCLUIR */}
-                        {isAdmin && (
-                          <button
-                            onClick={() => setUserToDelete({ id: u.id, name: u.nome })}
-                            disabled={isSelf}
-                            className={`px-2.5 py-1.5 border rounded-lg transition-colors flex items-center gap-1 font-bold text-[11px] ${
-                              isSelf 
-                                ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed' 
-                                : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 cursor-pointer'
-                            }`}
-                            title={isSelf ? 'Você não pode excluir a si mesmo' : 'Excluir Usuário'}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>EXCLUIR</span>
-                          </button>
-                        )}
-
-                      </div>
-                    </td>
-
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Modal Criar/Editar Usuário */}

@@ -1,11 +1,10 @@
 import React from 'react';
 import { Usuario } from '../types';
+import { QrCode, Wifi, WifiOff, RefreshCw, LogOut, UserCheck, Database, CheckCircle2 } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { QrCode, Wifi, WifiOff, RefreshCw, LogOut, UserCheck } from 'lucide-react';
 
 interface HeaderProps {
   currentUser: Usuario;
-  onUserChange: (user: Usuario) => void;
   onLogout: () => void;
   isOnline: boolean;
   setIsOnline: (online: boolean) => void;
@@ -16,7 +15,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   currentUser,
-  onUserChange,
   onLogout,
   isOnline,
   setIsOnline,
@@ -24,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenScanner,
   onTriggerSync,
 }) => {
-  const users = storageService.getUsuarios();
+  const syncState = storageService.getSyncState();
 
   return (
     <header id="app-header" className="bg-[#1b4332] text-white shadow-md sticky top-0 z-30 border-b border-[#2d6a4f]/50">
@@ -49,6 +47,25 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Right Action Bar */}
         <div className="flex items-center space-x-2 sm:space-x-3">
           
+          {/* Status da Nuvem / Firestore */}
+          {syncState.isQuotaExceeded ? (
+            <div 
+              className="hidden lg:flex items-center gap-1.5 bg-amber-500/20 text-amber-200 border border-amber-400/40 px-2.5 py-1 rounded-lg text-xs font-semibold"
+              title="Cota do Firestore atingida no momento. Seus dados estão salvos localmente e 100% seguros."
+            >
+              <Database className="w-3.5 h-3.5 text-amber-400" />
+              <span>Modo Local Protegido</span>
+            </div>
+          ) : syncState.status === 'sincronizado' ? (
+            <div 
+              className="hidden lg:flex items-center gap-1.5 bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 px-2.5 py-1 rounded-lg text-xs font-semibold"
+              title="Sincronização em tempo real ativa com o Firestore."
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Sincronizado</span>
+            </div>
+          ) : null}
+
           {/* Quick QR Scanner Button */}
           <button
             type="button"
@@ -98,32 +115,21 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* User Profile Selector & Logout */}
-          <div className="relative flex items-center gap-2 bg-[#081c15] border border-[#2d6a4f] rounded-lg p-1">
-            <select
-              id="header-user-select"
-              value={currentUser.id}
-              onChange={(e) => {
-                const found = users.find(u => u.id === e.target.value);
-                if (found) {
-                  onUserChange(found);
-                  storageService.setCurrentUser(found);
-                }
-              }}
-              className="bg-transparent text-[#d8f3dc] text-xs sm:text-sm font-semibold px-2 py-1 cursor-pointer focus:outline-none"
-              title="Trocar perfil de usuário rápido"
-            >
-              {users.map((u) => (
-                <option key={u.id} value={u.id} className="bg-[#1b4332] text-white">
-                  {u.nome} ({u.perfil})
-                </option>
-              ))}
-            </select>
+          {/* Authenticated User Profile & Logout */}
+          <div className="flex items-center gap-2 bg-[#081c15] border border-[#2d6a4f] rounded-lg px-2.5 py-1">
+            <div className="flex items-center gap-1.5">
+              <UserCheck className="w-4 h-4 text-[#52b788]" />
+              <div className="text-left hidden sm:block">
+                <p className="text-xs font-bold text-white leading-tight">{currentUser.nome}</p>
+                <p className="text-[10px] text-[#b7e4c7] font-medium leading-none">{currentUser.perfil}</p>
+              </div>
+            </div>
 
             <button
               type="button"
+              id="header-logout-btn"
               onClick={onLogout}
-              className="p-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 rounded-md transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+              className="ml-1.5 p-1.5 bg-rose-900/60 hover:bg-rose-800 text-rose-200 rounded-md transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
               title="Sair da Conta (Logout)"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -137,3 +143,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

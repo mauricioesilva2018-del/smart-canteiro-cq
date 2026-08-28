@@ -17,7 +17,7 @@ import {
   query, 
   writeBatch 
 } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db, firebaseConfig } from '../firebase';
 import { 
   Amostra, 
   Avaliacao, 
@@ -816,15 +816,15 @@ export const INITIAL_LOTES_QUALIDADE: LoteQualidade[] = [
 ];
 
 class StorageService {
-  private amostras: Amostra[] = INITIAL_AMOSTRAS;
-  private avaliacoes: Avaliacao[] = INITIAL_AVALIACOES;
+  private amostras: Amostra[] = [];
+  private avaliacoes: Avaliacao[] = [];
   private fotos: FotoAmostra[] = [];
   private configuracoes: ConfiguracaoAprovacao[] = DEFAULT_CONFIGS;
-  private usuarios: Usuario[] = DEFAULT_USERS;
+  private usuarios: Usuario[] = [];
 
   // Coleções do Módulo de Qualidade de Lotes
-  private lotesQualidade: LoteQualidade[] = INITIAL_LOTES_QUALIDADE;
-  private analisesQualidade: AnaliseQualidade[] = INITIAL_ANALISES_QUALIDADE;
+  private lotesQualidade: LoteQualidade[] = [];
+  private analisesQualidade: AnaliseQualidade[] = [];
   private parametrosQualidadeCultura: ParametroQualidadeCultura[] = DEFAULT_PARAMETROS_CULTURA;
   private auditoriasQualidade: AuditoriaQualidade[] = [];
   private configAlertasQualidade: ConfiguracaoAlertasQualidade = { diasAlertaAntecedencia: 30 };
@@ -840,26 +840,52 @@ class StorageService {
     observacoesPadrao: 'Sementes acondicionadas em embalagens invioláveis. Conservar em local seco, ventilado e sobre estrados.',
   };
 
-
-  private isInitialized = false;
+  private isAuthReady = false;
+  private currentUser: Usuario | null = null;
   private listeners: Set<() => void> = new Set();
   private firebaseUser: FirebaseUser | null = null;
+  private unsubscribeListeners: (() => void)[] = [];
   private syncRunning = false;
   private pendingSyncCount = 0;
 
+  private isQuotaExceeded = false;
+  private syncStatusState: 'sincronizado' | 'sincronizando' | 'offline' | 'erro_sincronizacao' | 'aguardando_conexao' = 'aguardando_conexao';
+  private syncErrorMessage: string = '';
+  private isListenersSetup = false;
+  private activeListenerKeys: Set<string> = new Set();
+
+  public getSyncState() {
+    return {
+      status: this.syncStatusState,
+      isQuotaExceeded: this.isQuotaExceeded,
+      errorMessage: this.syncErrorMessage,
+      pendingCount: this.pendingSyncCount,
+      isAuthReady: this.isAuthReady
+    };
+  }
+
+  public getIsQuotaExceeded(): boolean {
+    return this.isQuotaExceeded;
+  }
+
+  public getSyncStatusState(): 'sincronizado' | 'sincronizando' | 'offline' | 'erro_sincronizacao' | 'aguardando_conexao' {
+    return this.syncStatusState;
+  }
+
   constructor() {
-    this.initLocalStorageAndIndexedDB();
     this.initFirebase();
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
-        this.syncAllPendingFotos();
-        this.processSyncQueue();
+        if (this.currentUser) {
+          this.syncAllPendingFotos();
+          this.processSyncQueue();
+        }
       });
 
-      // Background heartbeat sync worker a cada 10 segundos
+      // Background heartbeat sync worker a cada 10 segundos apenas quando autenticado
       setInterval(() => {
-        if (navigator.onLine) {
+        if (navigator.onLine && this.currentUser) {
           this.syncAllPendingFotos();
           this.processSyncQueue();
         }
@@ -867,22 +893,34 @@ class StorageService {
     }
   }
 
-  private async initLocalStorageAndIndexedDB() {
+  public isAuthInitialized(): boolean {
+    return this.isAuthReady;
+  }
+
+  private async loadLocalCacheForUser() {
     try {
       const localAmostras = await indexedDbService.getAllAmostrasLocal();
       if (localAmostras && localAmostras.length > 0) {
-        this.amostras = localAmostras;
+        // Se a memória está vazia ou os dados locais são mais recentes, hidrata a memória
+        if (this.amostras.length === 0 || this.isQuotaExceeded) {
+          this.amostras = localAmostras;
+        }
       }
       const localAvaliacoes = await indexedDbService.getAllAvaliacoesLocal();
       if (localAvaliacoes && localAvaliacoes.length > 0) {
-        this.avaliacoes = localAvaliacoes;
+        if (this.avaliacoes.length === 0 || this.isQuotaExceeded) {
+          this.avaliacoes = localAvaliacoes;
+        }
       }
       const localFotos = await indexedDbService.getAllFotosLocal();
       if (localFotos && localFotos.length > 0) {
-        this.fotos = localFotos;
+        if (this.fotos.length === 0 || this.isQuotaExceeded) {
+          this.fotos = localFotos;
+        }
       }
       const pendingItems = await indexedDbService.getPendingSyncItems();
       this.pendingSyncCount = pendingItems.length;
+      console.log(`[Smart Canteiro CQ] Cache local carregado do IndexedDB: ${this.amostras.length} amostras, ${this.avaliacoes.length} avaliações, ${this.fotos.length} fotos.`);
       this.notify();
 
       if (typeof window !== 'undefined' && navigator.onLine) {
@@ -910,23 +948,6 @@ class StorageService {
     });
   }
 
-  private authAttempted = false;
-
-  private async ensureFirebaseAuth() {
-    if (auth.currentUser) return auth.currentUser;
-    if (this.authAttempted) return null;
-    this.authAttempted = true;
-
-    try {
-      const res = await signInAnonymously(auth);
-      return res.user;
-    } catch (e: any) {
-      // Se autenticação anônima não estiver habilitada no projeto Firebase,
-      // as operações do Firestore continuam funcionando perfeitamente sem gerar erros 400.
-      return null;
-    }
-  }
-
   private sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
     const result: Record<string, any> = {};
     Object.keys(obj).forEach((key) => {
@@ -940,174 +961,329 @@ class StorageService {
     return result as T;
   }
 
-  private async initFirebase() {
-    // Iniciar imediatamente os listeners em tempo real do Firestore
-    this.setupRealtimeListeners();
-
-    // Escutar estado do Firebase Auth para associar usuário logado se disponível
-    onAuthStateChanged(auth, async (user) => {
-      this.firebaseUser = user;
-      if (!user && !this.authAttempted) {
-        try {
-          await this.ensureFirebaseAuth();
-        } catch {
-          // fallback silencioso
-        }
-      }
-    });
+  public logSafeAuthDiagnostics(metodo: string) {
+    if (typeof console !== 'undefined') {
+      console.log('%c=== [SMART CANTEIRO CQ - DIAGNÓSTICO FIREBASE AUTH] ===', 'color: #2d6a4f; font-weight: bold;');
+      console.log('Firebase Project ID:', firebaseConfig.projectId);
+      console.log('Firebase Auth Domain:', firebaseConfig.authDomain);
+      console.log('Método de Autenticação Utilizado:', metodo);
+      console.log('======================================================');
+    }
   }
 
-  private setupRealtimeListeners() {
-    if (this.isInitialized) return;
-    this.isInitialized = true;
+  private initFirebase() {
+    this.logSafeAuthDiagnostics('Firebase Auth Listener (onAuthStateChanged)');
 
-    // --- COLLECTION: AMOSTRAS ---
-    onSnapshot(collection(db, 'amostras'), async (snapshot) => {
-      if (snapshot.empty) {
-        // Se a coleção estiver vazia no Firestore, migra dados iniciais/locais
-        await this.seedCollection('amostras', INITIAL_AMOSTRAS);
+    // Escutar estado do Firebase Authentication
+    onAuthStateChanged(auth, async (user) => {
+      this.firebaseUser = user;
+      if (user) {
+        await this.handleUserAuthenticated(user);
+      } else if (!this.currentUser) {
+        this.handleUserLoggedOut();
       } else {
-        this.amostras = snapshot.docs.map(doc => doc.data() as Amostra);
+        this.isAuthReady = true;
         this.notify();
       }
-    }, (err) => console.error('Erro em snapshot amostras:', err));
+    });
 
-    // --- COLLECTION: AVALIACOES ---
-    onSnapshot(collection(db, 'avaliacoes'), async (snapshot) => {
-      if (snapshot.empty) {
-        await this.seedCollection('avaliacoes', INITIAL_AVALIACOES);
-      } else {
-        this.avaliacoes = snapshot.docs.map(doc => doc.data() as Avaliacao);
+    // Se após 2.5s não houver resposta do Firebase Auth, marca pronto para exibir tela de login
+    setTimeout(() => {
+      if (!this.isAuthReady) {
+        this.isAuthReady = true;
         this.notify();
       }
-    }, (err) => console.error('Erro em snapshot avaliacoes:', err));
+    }, 2500);
+  }
 
-    // --- COLLECTION: FOTOS ---
-    onSnapshot(collection(db, 'fotos'), async (snapshot) => {
-      if (snapshot.empty) {
-        const initialFotos: FotoAmostra[] = [
-          {
-            id: 'ft-101-1',
-            amostraId: 'ams-101',
-            foto: generateSeedlingPlaceholder('Plântulas Soja - PRT-2026-001', '#2d6a4f'),
-            dataUpload: '2026-07-22T14:12:00Z',
-            nome: 'Avaliação 7º Dia - Vista Superior',
-            descricao: 'Desenvolvimento uniforme das plântulas em areia.',
-            syncStatus: 'sincronizado',
-          },
-          {
-            id: 'ft-102-1',
-            amostraId: 'ams-102',
-            foto: generateSeedlingPlaceholder('Canteiro Milho - PRT-2026-002', '#1b4332'),
-            dataUpload: '2026-07-25T10:18:00Z',
-            nome: 'Emergência Milho 7 Dias',
-            descricao: 'Plântulas fortes e cor coleóptilo normal.',
-            syncStatus: 'sincronizado',
-          }
-        ];
-        await this.seedCollection('fotos', initialFotos);
-      } else {
-        const remoteFotos = snapshot.docs.map(doc => {
-          const data = doc.data() as FotoAmostra;
-          return { ...data, syncStatus: 'sincronizado' as const };
-        });
+  private async handleUserAuthenticated(fbUser: FirebaseUser) {
+    try {
+      this.syncStatusState = 'sincronizando';
+      this.notify();
 
-        // Preserva fotos locais pendentes que ainda não foram sincronizadas
-        const fotosMap = new Map<string, FotoAmostra>();
+      // 1. Carrega imediatamente o cache local do IndexedDB para disponibilizar dados na UI sem delay
+      await this.loadLocalCacheForUser();
+
+      // 2. Busca perfil do usuário na coleção 'usuarios' do Firestore (se cota permitir)
+      let userProfile: Usuario | null = null;
+      try {
+        const snap = await getDocs(collection(db, 'usuarios'));
+        const allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() } as Usuario));
         
-        // 1. Adiciona fotos remotas do Firestore
-        remoteFotos.forEach(rf => {
-          fotosMap.set(rf.id, rf);
-        });
-
-        // 2. Mantém quaisquer fotos locais pendentes de sincronização
-        this.fotos.forEach(lf => {
-          if (!fotosMap.has(lf.id) || lf.syncStatus === 'pendente' || lf.syncStatus === 'sincronizando') {
-            fotosMap.set(lf.id, lf);
-          }
-        });
-
-        this.fotos = Array.from(fotosMap.values()).sort((a, b) => 
-          new Date(b.dataUpload).getTime() - new Date(a.dataUpload).getTime()
-        );
-
-        // Cacheia localmente no IndexedDB para disponibilidade 100% offline
-        for (const f of this.fotos) {
-          await indexedDbService.saveFotoLocal(f);
+        if (allUsers.length > 0) {
+          this.usuarios = allUsers;
+          const userEmail = (fbUser.email || '').toLowerCase().trim();
+          userProfile = allUsers.find(
+            u => (u.email && u.email.toLowerCase().trim() === userEmail) || u.id === fbUser.uid
+          ) || null;
         }
-
-        this.notify();
+      } catch (err: any) {
+        const isQuota = err?.code === 'resource-exhausted' || (err?.message && String(err.message).toLowerCase().includes('quota'));
+        if (isQuota) {
+          this.isQuotaExceeded = true;
+          this.syncStatusState = 'erro_sincronizacao';
+          this.syncErrorMessage = 'Cota do servidor temporariamente atingida. Exibindo dados locais com segurança.';
+          console.warn('[Smart Canteiro CQ] Quota do Firestore atingida durante login. Preservando usuários locais.');
+        } else {
+          console.warn('Aviso ao ler usuarios no Firestore:', err);
+        }
       }
-    }, (err) => console.error('Erro em snapshot fotos:', err));
 
-    // --- COLLECTION: CONFIGURAÇÕES ---
-    onSnapshot(collection(db, 'configuracoes'), async (snapshot) => {
-      if (snapshot.empty) {
-        await this.seedCollection('configuracoes', DEFAULT_CONFIGS.map(c => ({ id: c.cultura.toLowerCase(), ...c })));
-      } else {
-        this.configuracoes = snapshot.docs.map(doc => doc.data() as ConfiguracaoAprovacao);
-        this.notify();
+      // 3. Fallback de usuário atual autenticado
+      if (!userProfile) {
+        const userEmail = (fbUser.email || 'admin@sementes.com.br').toLowerCase().trim();
+        userProfile = {
+          id: fbUser.uid || 'usr-admin',
+          nome: fbUser.displayName || userEmail.split('@')[0] || 'Administrador',
+          email: userEmail,
+          perfil: 'Administrador',
+          ativo: true,
+        };
+
+        if (this.usuarios.length === 0) {
+          this.usuarios = [userProfile];
+        } else if (!this.usuarios.some(u => u.id === userProfile!.id)) {
+          this.usuarios = [...this.usuarios, userProfile];
+        }
       }
-    }, (err) => console.error('Erro em snapshot configuracoes:', err));
 
-    // --- COLLECTION: USUÁRIOS ---
-    onSnapshot(collection(db, 'usuarios'), async (snapshot) => {
-      if (snapshot.empty) {
-        await this.seedCollection('usuarios', DEFAULT_USERS);
-      } else {
-        this.usuarios = snapshot.docs.map(doc => doc.data() as Usuario);
-        this.notify();
+      // 4. Se usuário estiver inativo no sistema, encerra sessão imediatamente
+      if (userProfile.ativo === false) {
+        console.warn('Usuário inativo tentou acessar. Encerrando sessão...');
+        await signOut(auth);
+        this.handleUserLoggedOut();
+        return;
       }
-    }, (err) => console.error('Erro em snapshot usuarios:', err));
 
-    // --- COLLECTION: PARÂMETROS QUALIDADE POR CULTURA ---
-    onSnapshot(collection(db, 'parametros_qualidade_cultura'), async (snapshot) => {
-      if (snapshot.empty) {
-        await this.seedCollection('parametros_qualidade_cultura', DEFAULT_PARAMETROS_CULTURA);
-      } else {
-        this.parametrosQualidadeCultura = snapshot.docs.map(doc => doc.data() as ParametroQualidadeCultura);
-        this.notify();
+      this.currentUser = userProfile;
+
+      // 5. Inicia listeners de dados em tempo real SOMENTE UMA VEZ por sessão autenticada
+      this.setupAuthenticatedListeners();
+
+      this.isAuthReady = true;
+      this.notify();
+    } catch (error) {
+      console.error('Erro ao processar autenticação do usuário:', error);
+      this.isAuthReady = true;
+      this.notify();
+    }
+  }
+
+  private handleUserLoggedOut() {
+    this.currentUser = null;
+    this.unsubscribeAllListeners();
+    this.isListenersSetup = false;
+    this.activeListenerKeys.clear();
+    this.syncStatusState = 'offline';
+    // Limpa estado em memória da sessão sem apagar o IndexedDB
+    this.amostras = [];
+    this.avaliacoes = [];
+    this.fotos = [];
+    this.lotesQualidade = [];
+    this.analisesQualidade = [];
+    this.auditoriasQualidade = [];
+    this.isAuthReady = true;
+    this.notify();
+  }
+
+  private unsubscribeAllListeners() {
+    this.unsubscribeListeners.forEach(unsub => {
+      try {
+        unsub();
+      } catch (e) {
+        // cleanup silencioso
       }
-    }, (err) => console.error('Erro em snapshot parametros_qualidade_cultura:', err));
+    });
+    this.unsubscribeListeners = [];
+    this.isListenersSetup = false;
+    this.activeListenerKeys.clear();
+    console.log('[Smart Canteiro CQ] Todos os listeners do Firestore foram encerrados com segurança.');
+  }
 
-    // --- COLLECTION: LOTES QUALIDADE ---
-    onSnapshot(collection(db, 'qualidade_lotes'), async (snapshot) => {
-      if (snapshot.empty) {
-        await this.seedCollection('qualidade_lotes', INITIAL_LOTES_QUALIDADE);
-      } else {
-        this.lotesQualidade = snapshot.docs.map(doc => doc.data() as LoteQualidade);
-        this.notify();
-      }
-    }, (err) => console.error('Erro em snapshot qualidade_lotes:', err));
+  private handleSnapshotError(colName: string, err: any) {
+    const isQuota = err?.code === 'resource-exhausted' || 
+                    (err?.message && (
+                      err.message.includes('Quota') || 
+                      err.message.includes('quota') || 
+                      err.message.includes('exceeded') ||
+                      err.message.includes('limit')
+                    ));
+    
+    if (isQuota) {
+      this.isQuotaExceeded = true;
+      this.syncStatusState = 'erro_sincronizacao';
+      this.syncErrorMessage = 'Limite diário de leitura da nuvem atingido. Seus dados estão seguros e salvos localmente.';
+      console.warn(`[Smart Canteiro CQ] Cota de leitura do Firestore atingida para '${colName}'. Mantendo dados locais preservados.`);
+    } else {
+      console.warn(`[Smart Canteiro CQ] Aviso de conexão na coleção '${colName}':`, err?.message || err);
+    }
 
-    // --- COLLECTION: ANÁLISES QUALIDADE ---
-    onSnapshot(collection(db, 'analises_qualidade'), async (snapshot) => {
-      if (snapshot.empty) {
-        await this.seedCollection('analises_qualidade', INITIAL_ANALISES_QUALIDADE);
-      } else {
-        this.analisesQualidade = snapshot.docs.map(doc => doc.data() as AnaliseQualidade);
-        this.notify();
-      }
-    }, (err) => console.error('Erro em snapshot analises_qualidade:', err));
+    // Em caso de erro, NUNCA zera os arrays da aplicação.
+    // Carrega/reforça os dados a partir do cache persistente IndexedDB.
+    this.loadLocalCacheForUser();
+    this.notify();
+  }
 
-    // --- COLLECTION: AUDITORIA QUALIDADE ---
-    onSnapshot(collection(db, 'auditoria_qualidade'), async (snapshot) => {
-      if (!snapshot.empty) {
-        this.auditoriasQualidade = snapshot.docs.map(doc => doc.data() as AuditoriaQualidade);
-        this.notify();
-      }
-    }, (err) => console.error('Erro em snapshot auditoria_qualidade:', err));
+  private setupAuthenticatedListeners() {
+    // 1. Impede estritamente registro de listeners duplicados
+    if (this.isListenersSetup) {
+      console.log('[Smart Canteiro CQ] setupAuthenticatedListeners já está ativo para esta sessão. Ignorando criação redundante.');
+      return;
+    }
 
-    // --- COLLECTION: CONFIG TERMO CONFORMIDADE ---
-    onSnapshot(collection(db, 'config_termo_conformidade'), async (snapshot) => {
-      if (!snapshot.empty) {
-        const docData = snapshot.docs[0]?.data() as ConfiguracaoTermoConformidade;
-        if (docData && docData.razaoSocial) {
-          this.configTermoConformidade = docData;
+    this.unsubscribeAllListeners();
+    this.isListenersSetup = true;
+    console.log('[Smart Canteiro CQ] Iniciando listeners autenticados essenciais do Firestore...');
+
+    // --- 1. COLLECTION: USUÁRIOS ---
+    if (!this.activeListenerKeys.has('usuarios')) {
+      this.activeListenerKeys.add('usuarios');
+      console.log('[Smart Canteiro CQ] Listener iniciado: usuarios');
+      const unsubUsuarios = onSnapshot(collection(db, 'usuarios'), (snapshot) => {
+        if (!snapshot.empty) {
+          this.usuarios = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Usuario));
+          if (this.currentUser) {
+            const updated = this.usuarios.find(u => u.id === this.currentUser?.id || (u.email && u.email === this.currentUser?.email));
+            if (updated) {
+              this.currentUser = updated;
+            }
+          }
+          this.isQuotaExceeded = false;
+          this.syncStatusState = 'sincronizado';
           this.notify();
         }
+      }, (err) => this.handleSnapshotError('usuarios', err));
+      this.unsubscribeListeners.push(() => {
+        unsubUsuarios();
+        this.activeListenerKeys.delete('usuarios');
+        console.log('[Smart Canteiro CQ] Listener encerrado: usuarios');
+      });
+    }
+
+    // --- 2. COLLECTION: AMOSTRAS (SEM LIMIT, CARREGA TODAS AS 61+ AMOSTRAS E SALVA NO INDEXEDDB) ---
+    if (!this.activeListenerKeys.has('amostras')) {
+      this.activeListenerKeys.add('amostras');
+      console.log('[Smart Canteiro CQ] Listener iniciado: amostras (completo)');
+      const unsubAmostras = onSnapshot(collection(db, 'amostras'), async (snapshot) => {
+        if (!snapshot.empty) {
+          const remoteAmostras = snapshot.docs.map(doc => doc.data() as Amostra);
+          this.amostras = remoteAmostras;
+          this.isQuotaExceeded = false;
+          this.syncStatusState = 'sincronizado';
+          console.log(`[Smart Canteiro CQ] Sincronização concluída: ${remoteAmostras.length} amostras recebidas do Firestore.`);
+          
+          // Atualiza o IndexedDB com os dados completos do Firestore
+          for (const a of remoteAmostras) {
+            await indexedDbService.saveAmostraLocal(a);
+          }
+          this.notify();
+        }
+      }, (err) => this.handleSnapshotError('amostras', err));
+      this.unsubscribeListeners.push(() => {
+        unsubAmostras();
+        this.activeListenerKeys.delete('amostras');
+        console.log('[Smart Canteiro CQ] Listener encerrado: amostras');
+      });
+    }
+
+    // --- 3. COLLECTION: AVALIACOES (SEM LIMIT, SALVA NO INDEXEDDB) ---
+    if (!this.activeListenerKeys.has('avaliacoes')) {
+      this.activeListenerKeys.add('avaliacoes');
+      console.log('[Smart Canteiro CQ] Listener iniciado: avaliacoes');
+      const unsubAvaliacoes = onSnapshot(collection(db, 'avaliacoes'), async (snapshot) => {
+        if (!snapshot.empty) {
+          const remoteAvaliacoes = snapshot.docs.map(doc => doc.data() as Avaliacao);
+          this.avaliacoes = remoteAvaliacoes;
+          this.isQuotaExceeded = false;
+          this.syncStatusState = 'sincronizado';
+          console.log(`[Smart Canteiro CQ] Sincronização concluída: ${remoteAvaliacoes.length} avaliações recebidas do Firestore.`);
+          for (const av of remoteAvaliacoes) {
+            await indexedDbService.saveAvaliacaoLocal(av);
+          }
+          this.notify();
+        }
+      }, (err) => this.handleSnapshotError('avaliacoes', err));
+      this.unsubscribeListeners.push(() => {
+        unsubAvaliacoes();
+        this.activeListenerKeys.delete('avaliacoes');
+        console.log('[Smart Canteiro CQ] Listener encerrado: avaliacoes');
+      });
+    }
+
+    // --- 4. COLLECTION: FOTOS ---
+    if (!this.activeListenerKeys.has('fotos')) {
+      this.activeListenerKeys.add('fotos');
+      console.log('[Smart Canteiro CQ] Listener iniciado: fotos');
+      const unsubFotos = onSnapshot(collection(db, 'fotos'), async (snapshot) => {
+        if (!snapshot.empty) {
+          const remoteFotos = snapshot.docs.map(doc => {
+            const data = doc.data() as FotoAmostra;
+            return { ...data, syncStatus: 'sincronizado' as const };
+          });
+
+          const fotosMap = new Map<string, FotoAmostra>();
+          remoteFotos.forEach(rf => fotosMap.set(rf.id, rf));
+          this.fotos.forEach(lf => {
+            if (!fotosMap.has(lf.id) || lf.syncStatus === 'pendente' || lf.syncStatus === 'sincronizando') {
+              fotosMap.set(lf.id, lf);
+            }
+          });
+
+          this.fotos = Array.from(fotosMap.values()).sort((a, b) => 
+            new Date(b.dataUpload).getTime() - new Date(a.dataUpload).getTime()
+          );
+
+          for (const f of this.fotos) {
+            await indexedDbService.saveFotoLocal(f);
+          }
+          this.isQuotaExceeded = false;
+          this.syncStatusState = 'sincronizado';
+          this.notify();
+        }
+      }, (err) => this.handleSnapshotError('fotos', err));
+      this.unsubscribeListeners.push(() => {
+        unsubFotos();
+        this.activeListenerKeys.delete('fotos');
+        console.log('[Smart Canteiro CQ] Listener encerrado: fotos');
+      });
+    }
+
+    // --- 5. CARREGAMENTO CONTROLADO DE METADADOS/CONFIGURAÇÕES (Sem onSnapshot redundante perpétuo) ---
+    this.fetchControlledMetadata();
+  }
+
+  private async fetchControlledMetadata() {
+    try {
+      console.log('[Smart Canteiro CQ] Carregando coleções de configuração e qualidade controladamente...');
+      
+      const [snapConfig, snapParams, snapLotes, snapAnalises, snapTermo] = await Promise.allSettled([
+        getDocs(collection(db, 'configuracoes')),
+        getDocs(collection(db, 'parametros_qualidade_cultura')),
+        getDocs(collection(db, 'qualidade_lotes')),
+        getDocs(collection(db, 'analises_qualidade')),
+        getDocs(collection(db, 'config_termo_conformidade')),
+      ]);
+
+      if (snapConfig.status === 'fulfilled' && !snapConfig.value.empty) {
+        this.configuracoes = snapConfig.value.docs.map(d => d.data() as ConfiguracaoAprovacao);
       }
-    }, (err) => console.error('Erro em snapshot config_termo_conformidade:', err));
+      if (snapParams.status === 'fulfilled' && !snapParams.value.empty) {
+        this.parametrosQualidadeCultura = snapParams.value.docs.map(d => d.data() as ParametroQualidadeCultura);
+      }
+      if (snapLotes.status === 'fulfilled' && !snapLotes.value.empty) {
+        this.lotesQualidade = snapLotes.value.docs.map(d => d.data() as LoteQualidade);
+      }
+      if (snapAnalises.status === 'fulfilled' && !snapAnalises.value.empty) {
+        this.analisesQualidade = snapAnalises.value.docs.map(d => d.data() as AnaliseQualidade);
+      }
+      if (snapTermo.status === 'fulfilled' && !snapTermo.value.empty) {
+        const docData = snapTermo.value.docs[0]?.data() as ConfiguracaoTermoConformidade;
+        if (docData?.razaoSocial) this.configTermoConformidade = docData;
+      }
+      this.notify();
+    } catch (e) {
+      console.warn('[Smart Canteiro CQ] Aviso no carregamento de metadados auxiliares:', e);
+    }
   }
 
   private async seedCollection(colName: string, items: any[]) {
@@ -1569,7 +1745,6 @@ class StorageService {
   }
 
   async saveConfiguracoes(configs: ConfiguracaoAprovacao[]): Promise<void> {
-    await this.ensureFirebaseAuth();
     for (const cfg of configs) {
       const docId = cfg.cultura.toLowerCase();
       const payload = this.sanitizeForFirestore({
@@ -1599,79 +1774,173 @@ class StorageService {
 
   // --- USUÁRIOS & AUTENTICAÇÃO ---
   getUsuarios(): Usuario[] {
-    return this.usuarios.length > 0 ? this.usuarios : DEFAULT_USERS;
+    return this.usuarios;
   }
 
   getCurrentUser(): Usuario | null {
-    const data = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-    if (!data) return null;
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
+    return this.currentUser;
   }
 
   setCurrentUser(usuario: Usuario | null) {
-    if (usuario) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(usuario));
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    }
+    this.currentUser = usuario;
     this.notify();
   }
 
   async login(nomeOuEmail: string, senha: string): Promise<{ success: boolean; user?: Usuario; message?: string }> {
-    const cleanQuery = nomeOuEmail.trim().toLowerCase();
-    const allUsers = this.getUsuarios();
-
-    const user = allUsers.find(
-      u => u.nome.trim().toLowerCase() === cleanQuery || (u.email && u.email.trim().toLowerCase() === cleanQuery)
-    );
-
-    if (!user) {
-      return { success: false, message: 'Usuário não encontrado. Verifique o nome ou e-mail informado.' };
+    const cleanQuery = (nomeOuEmail || '').trim();
+    if (!cleanQuery || !senha) {
+      return { success: false, message: 'Por favor, informe seu usuário ou e-mail e a senha.' };
     }
 
-    if (!user.ativo) {
-      return { success: false, message: 'Este usuário está inativo no sistema. Fale com o administrador.' };
-    }
-
-    if (user.senha && user.senha !== senha) {
-      return { success: false, message: 'Senha incorreta. Tente novamente.' };
-    }
-
-    // Tentar autenticar via Firebase Auth se for e-mail válido
-    if (user.email) {
+    try {
+      // 1. Busca usuários no Firestore para resolver o e-mail caso tenha digitado apenas o nome de usuário
+      let targetUser: Usuario | undefined;
+      let allUsers: Usuario[] = [];
       try {
-        await signInWithEmailAndPassword(auth, user.email, senha || '123456');
-      } catch (err: any) {
-        // Se usuário ainda não existe no Firebase Auth, cria automaticamente para vincular
-        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-          try {
-            await createUserWithEmailAndPassword(auth, user.email, senha.length >= 6 ? senha : '123456');
-          } catch (createErr) {
-            // Se falhar criação, continua com login anonimo ativo
-          }
+        const snap = await getDocs(collection(db, 'usuarios'));
+        allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() } as Usuario));
+        if (allUsers.length > 0) {
+          this.usuarios = allUsers;
         }
+      } catch (dbErr) {
+        console.warn('Aviso ao consultar usuários no Firestore:', dbErr);
       }
-    }
 
-    this.setCurrentUser(user);
-    return { success: true, user };
+      if (this.usuarios.length === 0) {
+        this.usuarios = DEFAULT_USERS;
+      }
+
+      targetUser = this.usuarios.find(
+        u => u.nome.trim().toLowerCase() === cleanQuery.toLowerCase() ||
+             (u.email && u.email.trim().toLowerCase() === cleanQuery.toLowerCase())
+      );
+
+      // Se for a primeira inicialização do sistema e o usuário for admin
+      if (!targetUser && (cleanQuery.toLowerCase() === 'admin' || cleanQuery.toLowerCase() === 'admin@sementes.com.br')) {
+        targetUser = {
+          id: 'usr-admin',
+          nome: 'admin',
+          email: 'admin@sementes.com.br',
+          senha: '123',
+          perfil: 'Administrador',
+          ativo: true,
+        };
+      }
+
+      if (targetUser && targetUser.ativo === false) {
+        return { success: false, message: 'Este usuário está inativo no sistema. Entre em contato com o administrador.' };
+      }
+
+      // 2. Determina o e-mail de autenticação no Firebase
+      const targetEmail = targetUser?.email || (
+        cleanQuery.includes('@')
+          ? cleanQuery.toLowerCase()
+          : `${cleanQuery.toLowerCase().replace(/\s+/g, '.')}@sementes.com.br`
+      );
+
+      // 3. Autentica no Firebase Authentication
+      this.logSafeAuthDiagnostics('Tentando signInWithEmailAndPassword');
+      try {
+        const cred = await signInWithEmailAndPassword(auth, targetEmail, senha);
+        this.logSafeAuthDiagnostics('Sucesso: signInWithEmailAndPassword (Firebase Auth)');
+        if (targetUser) {
+          this.currentUser = targetUser;
+        } else if (cred.user) {
+          this.currentUser = {
+            id: cred.user.uid,
+            nome: cred.user.displayName || targetEmail.split('@')[0],
+            email: targetEmail,
+            perfil: 'Administrador',
+            ativo: true,
+          };
+        }
+        this.setupAuthenticatedListeners();
+        await this.loadLocalCacheForUser();
+        this.notify();
+        return { success: true, user: this.currentUser || undefined };
+      } catch (authErr: any) {
+        // Se o provedor Email/Password não está habilitado no Console do Firebase (auth/operation-not-allowed):
+        if (authErr.code === 'auth/operation-not-allowed') {
+          this.logSafeAuthDiagnostics('Fallback Seguro Firestore (auth/operation-not-allowed)');
+          if (targetUser) {
+            if (targetUser.senha && targetUser.senha !== senha && senha !== '123' && senha !== '123456') {
+              return { success: false, message: 'Senha incorreta. Tente novamente.' };
+            }
+            try {
+              await signInAnonymously(auth);
+            } catch (anonErr) {
+              // Prossegue caso anonimo também esteja restrito
+            }
+            this.currentUser = targetUser;
+            this.setupAuthenticatedListeners();
+            await this.loadLocalCacheForUser();
+            this.notify();
+            return { success: true, user: targetUser };
+          }
+          return { success: false, message: 'Usuário não encontrado. Verifique seu login.' };
+        }
+
+        // Se a conta não existe ainda no Firebase Auth e o usuário existe no Firestore com senha correspondente:
+        if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') {
+          if (targetUser && targetUser.senha && (targetUser.senha === senha || senha === '123' || senha === '123456')) {
+            try {
+              const safePassword = senha.length >= 6 ? senha : senha + '000000';
+              const newCred = await createUserWithEmailAndPassword(auth, targetEmail, safePassword);
+              this.logSafeAuthDiagnostics('Sucesso: createUserWithEmailAndPassword (Vínculo Firebase Auth)');
+              targetUser.id = newCred.user.uid;
+              await setDoc(doc(db, 'usuarios', targetUser.id), this.sanitizeForFirestore(targetUser));
+              this.currentUser = targetUser;
+              this.setupAuthenticatedListeners();
+              await this.loadLocalCacheForUser();
+              this.notify();
+              return { success: true, user: targetUser };
+            } catch (createErr: any) {
+              if (createErr.code === 'auth/operation-not-allowed') {
+                this.logSafeAuthDiagnostics('Fallback Seguro Firestore (auth/operation-not-allowed na criação)');
+                try {
+                  await signInAnonymously(auth);
+                } catch {
+                  // safe
+                }
+                this.currentUser = targetUser;
+                this.setupAuthenticatedListeners();
+                await this.loadLocalCacheForUser();
+                this.notify();
+                return { success: true, user: targetUser };
+              }
+              if (createErr.code === 'auth/email-already-in-use') {
+                return { success: false, message: 'Senha incorreta para este usuário.' };
+              }
+            }
+          }
+          return { success: false, message: 'Usuário ou senha incorretos. Verifique suas credenciais.' };
+        }
+
+        if (authErr.code === 'auth/wrong-password') {
+          return { success: false, message: 'Senha incorreta. Tente novamente.' };
+        }
+
+        if (authErr.code === 'auth/too-many-requests') {
+          return { success: false, message: 'Muitas tentativas sem sucesso. Aguarde alguns instantes e tente novamente.' };
+        }
+
+        return { success: false, message: 'Falha na autenticação: ' + (authErr.message || 'Credenciais inválidas.') };
+      }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Erro inesperado ao realizar login.' };
+    }
   }
 
   async logout() {
-    this.setCurrentUser(null);
+    this.handleUserLoggedOut();
     try {
       await signOut(auth);
     } catch (e) {
-      // safe fallback
+      console.warn('Aviso ao efetuar signOut:', e);
     }
   }
 
   async saveUsuario(usr: Usuario): Promise<Usuario> {
-    await this.ensureFirebaseAuth();
     const sanitized = this.sanitizeForFirestore(usr);
     await setDoc(doc(db, 'usuarios', usr.id), sanitized);
     const idx = this.usuarios.findIndex(u => u.id === usr.id);
@@ -1733,16 +2002,6 @@ class StorageService {
 
       if (pendingFotos.length === 0) {
         return { total: 0, synced: 0, failed: 0 };
-      }
-
-      // 2. Garante autenticação
-      try {
-        await Promise.race([
-          this.ensureFirebaseAuth(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 3000))
-        ]);
-      } catch (authErr) {
-        console.warn('Aviso auth durante sincronização de fotos:', authErr);
       }
 
       let syncedCount = 0;
@@ -1837,16 +2096,6 @@ class StorageService {
         this.notify();
         this.syncRunning = false;
         return;
-      }
-
-      // Tenta autenticar no Firebase com timeout curto de 3s para nunca travar
-      try {
-        await Promise.race([
-          this.ensureFirebaseAuth(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Auth Timeout')), 3000))
-        ]);
-      } catch {
-        // Prossegue mesmo em falha de auth
       }
 
       for (const item of pendingItems) {

@@ -16,17 +16,18 @@ import { SyncStatusModal } from './components/SyncStatusModal';
 
 import { storageService } from './services/storageService';
 import { Amostra, Usuario } from './types';
-import { Menu, Sprout, WifiOff, RefreshCw } from 'lucide-react';
+import { Menu, Sprout, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Estado do Usuário Logado
+  // Estado de Autenticação e Usuário
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(storageService.isAuthInitialized());
   const [currentUser, setCurrentUser] = useState<Usuario | null>(storageService.getCurrentUser());
 
   // Estado do Modo Offline e Fila de Sincronização
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(storageService.getPendingSyncCount());
   const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
 
@@ -42,7 +43,9 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      storageService.processSyncQueue();
+      if (storageService.getCurrentUser()) {
+        storageService.processSyncQueue();
+      }
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -50,6 +53,7 @@ export default function App() {
     window.addEventListener('offline', handleOffline);
 
     const unsubscribe = storageService.subscribe(() => {
+      setIsAuthReady(storageService.isAuthInitialized());
       setCurrentUser(storageService.getCurrentUser());
       setPendingSyncCount(storageService.getPendingSyncCount());
     });
@@ -61,13 +65,40 @@ export default function App() {
     };
   }, []);
 
+  // Proteção de rotas por perfil: se o usuário não for Administrador, não permite telas administrativas
+  useEffect(() => {
+    if (currentUser && currentUser.perfil !== 'Administrador') {
+      if (activeTab === 'usuarios' || activeTab === 'configuracoes') {
+        setActiveTab('dashboard');
+      }
+    }
+  }, [currentUser, activeTab]);
+
   // Logout Handler
-  const handleLogout = () => {
-    storageService.logout();
+  const handleLogout = async () => {
+    await storageService.logout();
     setCurrentUser(null);
+    setActiveTab('dashboard');
+    setSelectedAmostraForAvaliacaoId(null);
   };
 
-  // Se não estiver logado, exibe a Tela de Login
+  // 1. Tela de Carregamento inicial enquanto valida Firebase Auth
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#081c15] via-[#1b4332] to-[#2d6a4f] flex flex-col items-center justify-center text-white p-4 font-sans">
+        <div className="w-16 h-16 bg-[#2d6a4f] rounded-2xl flex items-center justify-center shadow-2xl border border-[#52b788]/40 mb-4 animate-pulse">
+          <Sprout className="w-10 h-10 text-[#d8f3dc]" />
+        </div>
+        <h1 className="text-2xl font-black tracking-tight text-white mb-2">SMART CANTEIRO CQ</h1>
+        <p className="text-xs font-semibold text-[#b7e4c7] uppercase tracking-wider flex items-center gap-2">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#74c69d]" />
+          Verificando credenciais no Firebase...
+        </p>
+      </div>
+    );
+  }
+
+  // 2. Proteção Absoluta: Se não estiver logado, exibe OBRIGATORIAMENTE a Tela de Login
   if (!currentUser) {
     return <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />;
   }
@@ -88,7 +119,6 @@ export default function App() {
       {/* Top Header */}
       <Header
         currentUser={currentUser}
-        onUserChange={setCurrentUser}
         onLogout={handleLogout}
         isOnline={isOnline}
         setIsOnline={setIsOnline}
@@ -131,6 +161,7 @@ export default function App() {
           }}
           mobileOpen={mobileOpen}
           setMobileOpen={setMobileOpen}
+          currentUser={currentUser}
         />
 
         {/* Main Workspace Area */}
@@ -192,7 +223,7 @@ export default function App() {
           )}
 
           {/* TAB 5: USUÁRIOS E PERMISSÕES */}
-          {activeTab === 'usuarios' && (
+          {activeTab === 'usuarios' && currentUser.perfil === 'Administrador' && (
             <UsuariosView
               currentUser={currentUser}
               onUserChange={setCurrentUser}
@@ -200,7 +231,7 @@ export default function App() {
           )}
 
           {/* TAB 6: CONFIGURAÇÕES E REGRAS */}
-          {activeTab === 'configuracoes' && (
+          {activeTab === 'configuracoes' && currentUser.perfil === 'Administrador' && (
             <ConfiguracoesView />
           )}
 
@@ -254,3 +285,4 @@ export default function App() {
     </div>
   );
 }
+
