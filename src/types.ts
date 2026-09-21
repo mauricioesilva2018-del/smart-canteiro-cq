@@ -31,6 +31,8 @@ export interface Amostra {
   obsLeitura7dias?: string;
   leitura10diasRealizada?: boolean;
   dataRealizacao10dias?: string;
+  totalTestes?: number;
+  testeAtualNumero?: number;
 }
 
 export interface Avaliacao {
@@ -51,6 +53,15 @@ export interface Avaliacao {
   dataAvaliacao: string;
   horaAvaliacao: string;
   usuarioAvaliador: string;
+  // Campos de Reteste e Rastreabilidade
+  testeNumero?: number;       // 1 = Teste 1, 2 = Teste 2, 3 = Teste 3...
+  testeAnteriorId?: string;   // ID do teste anterior para rastreabilidade
+  loteId?: string;            // Código do Lote
+  dataHora?: string;          // Data e hora do teste
+  usuario?: string;           // Usuário responsável
+  resultado?: ResultadoAprovacao; // 'Aprovado' | 'Reprovado'
+  tipoTeste?: string;         // 'Canteiro de Emergência' ou configurado
+  statusTeste?: 'rascunho' | 'concluido';
 }
 
 export interface FotoAmostra {

@@ -3,13 +3,13 @@ import { Amostra, Avaliacao, Usuario } from '../types';
 import { storageService } from '../services/storageService';
 import { exportService } from '../services/exportService';
 import { FotoManager } from './FotoManager';
-import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
+import { HistoricoTestesCanteiroCard } from './HistoricoTestesCanteiroCard';
 import { 
   ArrowLeft, Save, FileText, 
   Clock, ShieldCheck, ShieldAlert, Camera, Sprout, Trash2,
-  CheckCheck, Calendar, Bell, CheckCircle2, AlertCircle, Info, Sparkles
+  CheckCheck, Calendar, Bell, CheckCircle2, AlertCircle, Info, Sparkles, Plus, Eye
 } from 'lucide-react';
 import { getAmostraLeituraInfo, formatDateBR, addDaysToDate } from '../utils/dateUtils';
 
@@ -25,7 +25,26 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
   onBack,
 }) => {
   const [amostra, setAmostra] = useState<Amostra | undefined>(() => storageService.getAmostraById(amostraId));
-  const [existingAvaliacao, setExistingAvaliacao] = useState<Avaliacao | undefined>(() => storageService.getAvaliacaoByAmostraId(amostraId));
+  const [allTestes, setAllTestes] = useState<Avaliacao[]>(() => storageService.getAvaliacoesByAmostraId(amostraId));
+  
+  // Teste mais recente da lista
+  const latestTest = allTestes.length > 0 ? allTestes[allTestes.length - 1] : undefined;
+  
+  // Teste atualmente ativo / selecionado
+  const [activeTesteId, setActiveTesteId] = useState<string | undefined>(() => latestTest?.id);
+  const [activeTesteNumero, setActiveTesteNumero] = useState<number>(() => latestTest?.testeNumero ?? 1);
+  const [existingAvaliacao, setExistingAvaliacao] = useState<Avaliacao | undefined>(() => latestTest || storageService.getAvaliacaoByAmostraId(amostraId));
+
+  // Determinar se estamos em modo somente consulta (ex: visualizando teste anterior já finalizado)
+  const isViewingOlderTest = Boolean(latestTest && activeTesteId && activeTesteId !== latestTest.id);
+  const isConsultationMode = isViewingOlderTest;
+
+  // Determinar se é permitido iniciar um novo teste (o teste atual deve estar salvo/concluído)
+  const isCurrentTestConcluded = Boolean(
+    existingAvaliacao && 
+    (existingAvaliacao.statusTeste === 'concluido' || existingAvaliacao.resultadoAprovacao || amostra?.status === 'Concluído')
+  );
+  const canCreateNovoTeste = isCurrentTestConcluded;
 
   // Determinar Etapa Ativa de Leitura (7 dias = Contagem de Emergência; 10 dias = Avaliação Final)
   const [etapaLeitura, setEtapaLeitura] = useState<'7_dias' | '10_dias'>(() => {
@@ -68,11 +87,14 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
   const [isSaving10d, setIsSaving10d] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCreatingNovoTeste, setIsCreatingNovoTeste] = useState(false);
+  const [testeParaExcluir, setTesteParaExcluir] = useState<Avaliacao | null>(null);
 
   // Modais de Confirmação
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [showFinalizeConfirmModal, setShowFinalizeConfirmModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showNovoTesteModal, setShowNovoTesteModal] = useState(false);
 
   // Notificações Toast
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -83,22 +105,14 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       const updatedAmostra = storageService.getAmostraById(amostraId);
       if (updatedAmostra) {
         setAmostra(updatedAmostra);
-        if (updatedAmostra.plantulasEmergidas7dias !== undefined) {
-          setStrEmergidas7d(String(updatedAmostra.plantulasEmergidas7dias));
-        }
-        if (updatedAmostra.obsLeitura7dias) {
-          setObs7d(updatedAmostra.obsLeitura7dias);
-        }
       }
-      const updatedAval = storageService.getAvaliacaoByAmostraId(amostraId);
-      if (updatedAval) {
-        setExistingAvaliacao(updatedAval);
-      }
+      const updatedList = storageService.getAvaliacoesByAmostraId(amostraId);
+      setAllTestes(updatedList);
     });
     return () => unsub();
   }, [amostraId]);
 
-  // Carregar valores de avaliação inicial se existir
+  // Carregar valores da avaliação selecionada
   useEffect(() => {
     if (existingAvaliacao) {
       setStrFortes(String(existingAvaliacao.fortes));
@@ -112,6 +126,61 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       }
     }
   }, [existingAvaliacao?.id]);
+
+  // Handler para selecionar um teste do histórico
+  const handleSelectTeste = (teste: Avaliacao) => {
+    setActiveTesteId(teste.id);
+    setActiveTesteNumero(teste.testeNumero || 1);
+    setExistingAvaliacao(teste);
+    setStrFortes(String(teste.fortes ?? 0));
+    setStrIntermediarias(String(teste.intermediarias ?? 0));
+    setStrFracas(String(teste.fracas ?? 0));
+    setStrAnormais(String(teste.anormais ?? 0));
+    setStrMortas(String(teste.mortas ?? 0));
+    setObservacoes10d(teste.observacoes || '');
+    if (teste.plantulasEmergidas7dias !== undefined) {
+      setStrEmergidas7d(String(teste.plantulasEmergidas7dias));
+    }
+    setEtapaLeitura('10_dias');
+  };
+
+  // Handler para Iniciar NOVO TESTE (Reteste)
+  const handleFazerNovoTeste = async () => {
+    if (!amostra) return;
+    setIsCreatingNovoTeste(true);
+    try {
+      const novo = await storageService.criarNovoReteste(amostra.id, currentUser.nome);
+      const updatedList = storageService.getAvaliacoesByAmostraId(amostra.id);
+      setAllTestes(updatedList);
+      setExistingAvaliacao(novo);
+      setActiveTesteId(novo.id);
+      setActiveTesteNumero(novo.testeNumero || updatedList.length);
+
+      // Limpar campos de avaliação para começar uma nova do zero
+      setStrFortes('0');
+      setStrIntermediarias('0');
+      setStrFracas('0');
+      setStrAnormais('0');
+      setStrMortas('0');
+      setObservacoes10d('');
+      setStrEmergidas7d('0');
+      setObs7d('');
+      setEtapaLeitura('7_dias');
+
+      setShowNovoTesteModal(false);
+      setToast({
+        type: 'success',
+        message: `Novo Teste ${novo.testeNumero || updatedList.length} iniciado! O teste anterior permanece intacto no histórico.`
+      });
+    } catch (error) {
+      setToast({
+        type: 'error',
+        message: `Erro ao iniciar novo teste: ${error instanceof Error ? error.message : String(error)}`
+      });
+    } finally {
+      setIsCreatingNovoTeste(false);
+    }
+  };
 
   if (!amostra) {
     return (
@@ -160,6 +229,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
     currentStr: string,
     delta: number
   ) => {
+    if (isConsultationMode) return;
     const cur = currentStr === '' ? 0 : (parseInt(currentStr, 10) || 0);
     const nextVal = Math.max(0, Math.min(100, cur + delta));
     setter(String(nextVal));
@@ -170,6 +240,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
     raw: string,
     setter: React.Dispatch<React.SetStateAction<string>>
   ) => {
+    if (isConsultationMode) return;
     if (raw === '') {
       setter('');
       return;
@@ -260,7 +331,11 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       const horaAvaliacao = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
       const saved = await storageService.saveAvaliacao({
+        id: activeTesteId,
         amostraId: amostra.id,
+        loteId: amostra.lote,
+        testeNumero: activeTesteNumero,
+        statusTeste: 'rascunho',
         tipoLeitura: '10_dias',
         plantulasEmergidas7dias: amostra.plantulasEmergidas7dias !== undefined ? amostra.plantulasEmergidas7dias : emergidas7d,
         fortes,
@@ -272,15 +347,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         dataAvaliacao,
         horaAvaliacao,
         usuarioAvaliador: currentUser.nome,
+        usuario: currentUser.nome,
       });
 
       setExistingAvaliacao(saved);
+      setActiveTesteId(saved.id);
+      const updatedList = storageService.getAvaliacoesByAmostraId(amostra.id);
+      setAllTestes(updatedList);
       const isOnline = typeof window !== 'undefined' && navigator.onLine;
       setToast({
         type: 'success',
         message: isOnline 
-          ? 'Avaliação Final (10 dias) salva com sucesso!' 
-          : 'Salvo no dispositivo com segurança. Aguardando conexão para envio.'
+          ? `Avaliação Final (Teste ${saved.testeNumero || activeTesteNumero}) salva com sucesso!` 
+          : `Salvo no dispositivo com segurança (Teste ${saved.testeNumero || activeTesteNumero}). Aguardando conexão para envio.`
       });
     } catch (error) {
       setToast({
@@ -319,7 +398,11 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
 
       // Salva localmente via IndexedDB instantaneamente (sem dependência de rede)
       const saved = await storageService.saveAvaliacao({
+        id: activeTesteId,
         amostraId: amostra.id,
+        loteId: amostra.lote,
+        testeNumero: activeTesteNumero,
+        statusTeste: 'concluido',
         tipoLeitura: '10_dias',
         plantulasEmergidas7dias: amostra.plantulasEmergidas7dias !== undefined ? amostra.plantulasEmergidas7dias : emergidas7d,
         fortes,
@@ -331,9 +414,13 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         dataAvaliacao,
         horaAvaliacao,
         usuarioAvaliador: currentUser.nome,
+        usuario: currentUser.nome,
       });
 
       setExistingAvaliacao(saved);
+      setActiveTesteId(saved.id);
+      const updatedList = storageService.getAvaliacoesByAmostraId(amostra.id);
+      setAllTestes(updatedList);
       setShowFinalizeConfirmModal(false);
       setIsFinalizing(false);
 
@@ -341,8 +428,8 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       setToast({
         type: 'success',
         message: isOnline
-          ? 'Avaliação Final concluída com sucesso! Registro marcado como CONCLUÍDO.'
-          : 'Salvo no dispositivo. Canteiro finalizado localmente com sucesso!'
+          ? `Avaliação Final (Teste ${saved.testeNumero || activeTesteNumero}) concluída com sucesso! Registro marcado como CONCLUÍDO.`
+          : `Salvo no dispositivo. Canteiro (Teste ${saved.testeNumero || activeTesteNumero}) finalizado localmente com sucesso!`
       });
 
       setTimeout(() => {
@@ -358,25 +445,58 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
     }
   };
 
-  // --- AÇÃO: EXCLUIR AVALIAÇÃO ---
+  // --- AÇÃO: EXCLUIR TESTE SELECIONADO ---
   const handleConfirmDelete = async () => {
-    if (!existingAvaliacao) return;
+    const target = testeParaExcluir || existingAvaliacao;
+    if (!target) return;
     setIsDeleting(true);
     try {
-      const success = await storageService.deleteAvaliacao(existingAvaliacao.id);
+      const avaliacaoId = target.id;
+      const success = await storageService.deleteAvaliacao(avaliacaoId);
       if (success) {
-        setToast({ type: 'success', message: 'Avaliação excluída com sucesso.' });
-        setTimeout(() => {
-          onBack();
-        }, 800);
+        setToast({ 
+          type: 'success', 
+          message: `Teste ${target.testeNumero ? `#${target.testeNumero}` : ''} excluído com sucesso.` 
+        });
+
+        // Atualizar a tela automaticamente após a exclusão
+        const updatedList = storageService.getAvaliacoesByAmostraId(amostra.id);
+        const updatedAmostra = storageService.getAmostraById(amostra.id);
+        if (updatedAmostra) {
+          setAmostra(updatedAmostra);
+        }
+        setAllTestes(updatedList);
+
+        if (updatedList.length > 0) {
+          // Se o teste excluído era o que estava ativo, seleciona o teste mais recente remanescente
+          if (!activeTesteId || activeTesteId === target.id) {
+            const latest = updatedList[updatedList.length - 1];
+            handleSelectTeste(latest);
+          }
+        } else {
+          // Se não restou nenhum teste para este canteiro/lote, limpa o formulário de avaliação
+          setExistingAvaliacao(undefined);
+          setActiveTesteId(undefined);
+          setActiveTesteNumero(1);
+          setStrFortes('0');
+          setStrIntermediarias('0');
+          setStrFracas('0');
+          setStrAnormais('0');
+          setStrMortas('0');
+          setObservacoes10d('');
+          setStrEmergidas7d('0');
+          setObs7d('');
+          setEtapaLeitura('7_dias');
+        }
       } else {
-        setToast({ type: 'error', message: 'Erro ao excluir registro.' });
+        setToast({ type: 'error', message: 'Erro ao excluir o teste selecionado.' });
       }
     } catch (error) {
       setToast({ type: 'error', message: `Erro ao excluir: ${error instanceof Error ? error.message : String(error)}` });
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);
+      setTesteParaExcluir(null);
     }
   };
 
@@ -400,6 +520,20 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
+          {canCreateNovoTeste && (
+            <button
+              type="button"
+              id="btn-header-fazer-novo-teste"
+              onClick={() => setShowNovoTesteModal(true)}
+              disabled={isCreatingNovoTeste}
+              className="flex items-center gap-1.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all shadow-md active:scale-95 cursor-pointer"
+              title="Iniciar novo teste mantendo o anterior intacto"
+            >
+              <Plus className="w-4 h-4 text-[#d8f3dc]" />
+              <span>FAZER NOVO TESTE</span>
+            </button>
+          )}
+
           {existingAvaliacao && (
             <button
               type="button"
@@ -417,7 +551,30 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
             </button>
           )}
 
-          {etapaLeitura === '7_dias' ? (
+          {existingAvaliacao && (
+            <button
+              type="button"
+              id="btn-header-excluir-teste"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setTesteParaExcluir(existingAvaliacao);
+                setShowDeleteModal(true);
+              }}
+              className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer"
+              title="Excluir este teste"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              <span>EXCLUIR TESTE</span>
+            </button>
+          )}
+
+          {isConsultationMode ? (
+            <span className="px-3 py-2 bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1.5">
+              <Eye className="w-4 h-4 text-amber-700" />
+              <span>Modo Consulta (Teste {activeTesteNumero})</span>
+            </span>
+          ) : etapaLeitura === '7_dias' ? (
             /* Botão Salvar Leitura de 7 Dias */
             <button
               type="button"
@@ -574,6 +731,61 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         </div>
 
       </div>
+
+      {/* HISTÓRICO DE TESTES DO LOTE & RASTREABILIDADE */}
+      <HistoricoTestesCanteiroCard
+        amostra={amostra}
+        allTestes={allTestes}
+        selectedTesteId={activeTesteId}
+        onSelectTeste={handleSelectTeste}
+        onRequestDeleteTeste={(teste) => {
+          setTesteParaExcluir(teste);
+          setShowDeleteModal(true);
+        }}
+        onFazerNovoTeste={() => setShowNovoTesteModal(true)}
+        isCreatingNovoTeste={isCreatingNovoTeste}
+        canCreateNovoTeste={canCreateNovoTeste}
+      />
+
+      {/* BANNER DE MODO SOMENTE CONSULTA SE TESTE ANTERIOR ESTIVER SELECIONADO */}
+      {isConsultationMode && (
+        <div id="banner-modo-consulta" className="bg-amber-50 border-2 border-amber-300 p-4.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-950 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-200 text-amber-900 rounded-xl shrink-0">
+              <Eye className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-black text-sm">
+                MODO SOMENTE CONSULTA — TESTE {activeTesteNumero}
+              </p>
+              <p className="text-xs text-amber-800">
+                O teste anterior permanece salvo e protegido no histórico. Para realizar uma nova avaliação deste lote, clique em <strong>FAZER NOVO TESTE</strong>.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            {latestTest && latestTest.id !== activeTesteId && (
+              <button
+                type="button"
+                id="btn-voltar-teste-atual"
+                onClick={() => handleSelectTeste(latestTest)}
+                className="px-3.5 py-2 bg-[#1b4332] hover:bg-[#2d6a4f] text-white text-xs font-black rounded-xl shrink-0 cursor-pointer shadow-xs transition-all"
+              >
+                Ir para Teste Atual (#{latestTest.testeNumero || allTestes.length})
+              </button>
+            )}
+            {canCreateNovoTeste && (
+              <button
+                type="button"
+                onClick={() => setShowNovoTesteModal(true)}
+                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-xl shrink-0 cursor-pointer shadow-xs transition-all"
+              >
+                FAZER NOVO TESTE
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tab Selector: Avaliação x Fotos */}
       <div className="flex bg-gray-200 p-1 rounded-xl">
@@ -1278,52 +1490,104 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
               </span>
 
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                {existingAvaliacao && (
-                  <button
-                    type="button"
-                    id="btn-excluir-avaliacao"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowDeleteModal(true);
-                    }}
-                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    title="Excluir esta avaliação"
-                  >
-                    <Trash2 className="w-4 h-4 text-rose-600" />
-                    <span>Excluir</span>
-                  </button>
+                {isConsultationMode ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-3 py-2 rounded-xl flex items-center gap-1.5">
+                      <Eye className="w-4 h-4" />
+                      Teste {activeTesteNumero} em Modo Consulta (Preservado)
+                    </span>
+                    {canCreateNovoTeste && (
+                      <button
+                        type="button"
+                        id="btn-fazer-novo-teste-rodape-consulta"
+                        onClick={() => setShowNovoTesteModal(true)}
+                        className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md bg-[#1b4332] hover:bg-[#2d6a4f] text-white cursor-pointer active:scale-95 flex items-center justify-center gap-2 transition-all"
+                      >
+                        <Plus className="w-4 h-4 text-[#d8f3dc]" />
+                        <span>FAZER NOVO TESTE</span>
+                      </button>
+                    )}
+                    {existingAvaliacao && (
+                      <button
+                        type="button"
+                        id="btn-excluir-teste-consulta-rodape"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setTesteParaExcluir(existingAvaliacao);
+                          setShowDeleteModal(true);
+                        }}
+                        className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Excluir este teste"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-600" />
+                        <span>EXCLUIR TESTE</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {canCreateNovoTeste && (
+                      <button
+                        type="button"
+                        id="btn-fazer-novo-teste-rodape"
+                        onClick={() => setShowNovoTesteModal(true)}
+                        className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md bg-amber-600 hover:bg-amber-700 text-white cursor-pointer active:scale-95 flex items-center justify-center gap-1.5 transition-all"
+                      >
+                        <Plus className="w-4 h-4 text-amber-200" />
+                        <span>FAZER NOVO TESTE</span>
+                      </button>
+                    )}
+
+                    {existingAvaliacao && (
+                      <button
+                        type="button"
+                        id="btn-excluir-avaliacao"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setTesteParaExcluir(existingAvaliacao);
+                          setShowDeleteModal(true);
+                        }}
+                        className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Excluir este teste"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-600" />
+                        <span>EXCLUIR TESTE</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      id="btn-salvar-avaliacao-rodape"
+                      onClick={handleSaveDraft10Dias}
+                      disabled={!isExact100 || isSaving10d}
+                      className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 ${
+                        isExact100 && !isSaving10d
+                          ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer active:scale-95'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-70'
+                      }`}
+                    >
+                      <Save className="w-4 h-4 text-emerald-200" />
+                      <span>{isSaving10d ? 'Salvando...' : 'Salvar Rascunho'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="btn-finalizar-avaliacao-rodape"
+                      onClick={handleOpenFinalizeModal}
+                      disabled={!isExact100 || isFinalizing}
+                      className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 ${
+                        isExact100 && !isFinalizing
+                          ? 'bg-[#1b4332] hover:bg-[#2d6a4f] text-white cursor-pointer active:scale-95'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                      }`}
+                    >
+                      <CheckCheck className="w-4 h-4 text-[#d8f3dc]" />
+                      <span>Finalizar Avaliação</span>
+                    </button>
+                  </>
                 )}
-
-                <button
-                  type="button"
-                  id="btn-salvar-avaliacao-rodape"
-                  onClick={handleSaveDraft10Dias}
-                  disabled={!isExact100 || isSaving10d}
-                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 ${
-                    isExact100 && !isSaving10d
-                      ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer active:scale-95'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-70'
-                  }`}
-                >
-                  <Save className="w-4 h-4 text-emerald-200" />
-                  <span>{isSaving10d ? 'Salvando...' : 'Salvar Rascunho'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-finalizar-avaliacao-rodape"
-                  onClick={handleOpenFinalizeModal}
-                  disabled={!isExact100 || isFinalizing}
-                  className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center justify-center gap-2 ${
-                    isExact100 && !isFinalizing
-                      ? 'bg-[#1b4332] hover:bg-[#2d6a4f] text-white cursor-pointer active:scale-95'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
-                  }`}
-                >
-                  <CheckCheck className="w-4 h-4 text-[#d8f3dc]" />
-                  <span>Finalizar Avaliação</span>
-                </button>
               </div>
             </div>
 
@@ -1357,6 +1621,21 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         onCancel={() => setShowFinalizeConfirmModal(false)}
       />
 
+      {/* Modal de Confirmação: Iniciar NOVO TESTE */}
+      <ConfirmActionModal
+        isOpen={showNovoTesteModal}
+        title={`Iniciar Novo Teste (Teste ${(latestTest?.testeNumero ?? allTestes.length) + 1})`}
+        message={`Deseja iniciar um NOVO TESTE para o lote ${amostra.lote}?`}
+        subMessage="Os testes anteriores permanecerão intactos no histórico para consulta e rastreabilidade total. Os campos de contagem iniciarão vazios para preenchimento de uma nova avaliação do zero."
+        confirmText="Iniciar Novo Teste"
+        cancelText="Voltar"
+        confirmVariant="emerald"
+        iconType="finish"
+        isLoading={isCreatingNovoTeste}
+        onConfirm={handleFazerNovoTeste}
+        onCancel={() => setShowNovoTesteModal(false)}
+      />
+
       {/* Modal de Confirmação: Cancelar / Sair sem Salvar */}
       <ConfirmActionModal
         isOpen={showCancelConfirmModal}
@@ -1374,15 +1653,21 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         onCancel={() => setShowCancelConfirmModal(false)}
       />
 
-      {/* Modal de Confirmação: Exclusão de Registro */}
-      <ConfirmDeleteModal
+      {/* Modal de Confirmação: Excluir Teste */}
+      <ConfirmActionModal
         isOpen={showDeleteModal}
-        itemName={`Avaliação de ${amostra.protocolo}`}
-        title="Excluir Avaliação de Canteiro"
-        message="Tem certeza que deseja excluir este registro?"
-        isDeleting={isDeleting}
-        onCancel={() => setShowDeleteModal(false)}
+        title="Excluir Teste"
+        message="Tem certeza que deseja excluir este teste? Esta ação não poderá ser desfeita."
+        confirmText="EXCLUIR TESTE"
+        cancelText="CANCELAR"
+        confirmVariant="danger"
+        iconType="danger"
+        isLoading={isDeleting}
         onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setShowDeleteModal(false);
+          setTesteParaExcluir(null);
+        }}
       />
 
       {/* Toast Notification */}

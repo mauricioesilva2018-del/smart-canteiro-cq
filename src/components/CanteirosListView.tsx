@@ -381,6 +381,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                   {filteredAmostras.map((amostra) => {
                     const avaliacao = avaliacoes.find(v => v.amostraId === amostra.id);
                     const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
+                    const totalTestes = storageService.getAvaliacoesByAmostraId(amostra.id);
 
                     return (
                       <tr key={amostra.id} className="hover:bg-gray-50/80 transition-colors">
@@ -395,6 +396,14 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                               <QrCode className="w-3.5 h-3.5" />
                             </button>
                             <span>{amostra.protocolo}</span>
+                            {totalTestes.length > 1 && (
+                              <span 
+                                className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                title={`Lote com ${totalTestes.length} testes realizados no histórico`}
+                              >
+                                {totalTestes.length} testes
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -525,6 +534,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
               {filteredAmostras.map((amostra) => {
                 const avaliacao = avaliacoes.find(v => v.amostraId === amostra.id);
                 const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
+                const totalTestes = storageService.getAvaliacoesByAmostraId(amostra.id);
 
                 return (
                   <div key={amostra.id} className="p-4 space-y-3">
@@ -533,6 +543,14 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-black text-gray-900 text-base">{amostra.protocolo}</span>
+                          {totalTestes.length > 1 && (
+                            <span 
+                              className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              title={`Lote com ${totalTestes.length} testes realizados`}
+                            >
+                              {totalTestes.length} testes
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => onShowQRCode(amostra)}

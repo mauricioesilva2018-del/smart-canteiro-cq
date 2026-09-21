@@ -1412,13 +1412,168 @@ class StorageService {
     }
   }
 
-  // --- AVALIAÇÕES ---
+  // --- AVALIAÇÕES & RETESTES (HISTÓRICO MULTITESTES) ---
   getAvaliacoes(): Avaliacao[] {
     return this.avaliacoes;
   }
 
-  getAvaliacaoByAmostraId(amostraId: string): Avaliacao | undefined {
-    return this.avaliacoes.find(a => a.amostraId === amostraId);
+  /**
+   * Retorna todas as avaliações (testes) registradas para uma amostra/canteiro.
+   * Ordenadas cronologicamente por número de teste (Teste 1, Teste 2, Teste 3...).
+   */
+  getAvaliacoesByAmostraId(amostraId: string): Avaliacao[] {
+    if (!amostraId) return [];
+    const list = this.avaliacoes.filter(a => a.amostraId === amostraId);
+    return list.sort((a, b) => {
+      const numA = a.testeNumero ?? 1;
+      const numB = b.testeNumero ?? 1;
+      if (numA !== numB) return numA - numB;
+      const dateA = a.dataHora || (a.dataAvaliacao + 'T' + (a.horaAvaliacao || '00:00'));
+      const dateB = b.dataHora || (b.dataAvaliacao + 'T' + (b.horaAvaliacao || '00:00'));
+      return dateA.localeCompare(dateB);
+    });
+  }
+
+  /**
+   * Retorna todas as avaliações (testes) associadas a um lote específico.
+   */
+  getAvaliacoesByLote(lote: string): Avaliacao[] {
+    if (!lote) return [];
+    const normalizedLote = lote.trim().toLowerCase();
+    const amostraIds = new Set(
+      this.amostras
+        .filter(a => (a.lote || '').trim().toLowerCase() === normalizedLote)
+        .map(a => a.id)
+    );
+
+    const list = this.avaliacoes.filter(a => {
+      if (a.loteId && a.loteId.trim().toLowerCase() === normalizedLote) return true;
+      if (a.amostraId && amostraIds.has(a.amostraId)) return true;
+      return false;
+    });
+
+    return list.sort((a, b) => {
+      const numA = a.testeNumero ?? 1;
+      const numB = b.testeNumero ?? 1;
+      if (numA !== numB) return numA - numB;
+      const dateA = a.dataHora || (a.dataAvaliacao + 'T' + (a.horaAvaliacao || '00:00'));
+      const dateB = b.dataHora || (b.dataAvaliacao + 'T' + (b.horaAvaliacao || '00:00'));
+      return dateA.localeCompare(dateB);
+    });
+  }
+
+  /**
+   * Retorna a avaliação de uma amostra. Se testeNumero for passado, retorna o teste exato.
+   * Caso contrário, retorna a avaliação mais recente / ativa.
+   */
+  getAvaliacaoByAmostraId(amostraId: string, testeNumero?: number): Avaliacao | undefined {
+    if (!amostraId) return undefined;
+    const all = this.getAvaliacoesByAmostraId(amostraId);
+    if (all.length === 0) return undefined;
+    if (testeNumero !== undefined) {
+      return all.find(a => (a.testeNumero ?? 1) === testeNumero);
+    }
+    // Retorna o teste mais recente (último)
+    return all[all.length - 1];
+  }
+
+  /**
+   * Cria um NOVO TESTE / RETESTE para o lote mantendo rastreabilidade total:
+   * 1. Preserva o teste anterior (apenas consulta)
+   * 2. Incrementa o sequencial (Teste 1 -> Teste 2 -> Teste 3...)
+   * 3. Vincula testeNumero, testeAnteriorId, loteId, dataHora e usuario
+   * 4. Deixa os campos de contagem/avaliação zerados para preenchimento do zero
+   */
+  async criarNovoReteste(amostraId: string, usuarioNome: string): Promise<Avaliacao> {
+    const amostra = this.getAmostraById(amostraId);
+    if (!amostra) throw new Error('Amostra não encontrada');
+
+    const existingTests = this.getAvaliacoesByAmostraId(amostraId);
+    const maxNum = existingTests.reduce((max, t) => Math.max(max, t.testeNumero ?? 1), 0);
+    const nextSeq = maxNum > 0 ? maxNum + 1 : (existingTests.length + 1);
+
+    // Teste anterior para vínculo e rastreabilidade
+    const testeAnterior = existingTests.length > 0 ? existingTests[existingTests.length - 1] : undefined;
+    const testeAnteriorId = testeAnterior?.id || (existingTests[0]?.id) || ('avl-' + amostra.id);
+
+    const now = new Date();
+    const dataHora = now.toISOString();
+    const dataAvaliacao = dataHora.split('T')[0];
+    const horaAvaliacao = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const newId = 'avl-' + amostra.id + '-t' + nextSeq + '-' + Date.now().toString(36);
+
+    const novaAvaliacao: Avaliacao = {
+      id: newId,
+      amostraId: amostra.id,
+      loteId: amostra.lote,
+      testeNumero: nextSeq,
+      testeAnteriorId: testeAnteriorId,
+      tipoLeitura: '10_dias',
+      fortes: 0,
+      intermediarias: 0,
+      fracas: 0,
+      anormais: 0,
+      mortas: 0,
+      germinacao: 0,
+      percentualAnormais: 0,
+      percentualMortas: 0,
+      resultadoAprovacao: 'Reprovado',
+      resultado: 'Reprovado',
+      observacoes: '',
+      dataAvaliacao,
+      horaAvaliacao,
+      dataHora,
+      usuarioAvaliador: usuarioNome,
+      usuario: usuarioNome,
+      tipoTeste: 'Canteiro de Emergência / Germinação em Areia',
+      statusTeste: 'rascunho',
+    };
+
+    // 1. Salva no IndexedDB local (Offline-First)
+    await indexedDbService.saveAvaliacaoLocal(novaAvaliacao);
+
+    // 2. Atualiza a amostra mantendo dados cadastrais e marcando pendente para novo teste
+    const updatedAmostra: Amostra = {
+      ...amostra,
+      status: 'Pendente',
+      totalTestes: nextSeq,
+      testeAtualNumero: nextSeq,
+      leitura10diasRealizada: false,
+      dataAtualizacao: now.toISOString(),
+    };
+    await indexedDbService.saveAmostraLocal(updatedAmostra);
+
+    // 3. Enfileira sincronização
+    await indexedDbService.enqueueSyncItem({
+      id: 'sync-avl-' + novaAvaliacao.id,
+      entidadeId: novaAvaliacao.id,
+      tipo: 'AVALIACAO_SAVE',
+      titulo: `Novo Reteste (Teste ${nextSeq}) - ${amostra.protocolo}`,
+      payload: {
+        avaliacao: novaAvaliacao,
+        amostra: updatedAmostra,
+      },
+      dataCriacao: now.toISOString(),
+      status: 'pendente',
+      tentativas: 0,
+    });
+
+    // 4. Atualiza estado em memória e notifica
+    this.avaliacoes.unshift(novaAvaliacao);
+    const aIdx = this.amostras.findIndex(a => a.id === amostra.id);
+    if (aIdx !== -1) {
+      this.amostras[aIdx] = updatedAmostra;
+    }
+
+    this.pendingSyncCount++;
+    this.notify();
+
+    if (typeof window !== 'undefined' && navigator.onLine) {
+      setTimeout(() => this.processSyncQueue(), 50);
+    }
+
+    return novaAvaliacao;
   }
 
   /**
@@ -1480,10 +1635,11 @@ class StorageService {
   }
 
   /**
-   * Salva avaliação de canteiro com suporte total Offline-First.
+   * Salva avaliação de canteiro com suporte total Offline-First e Multi-testes.
    * Não trava a interface, persiste foto e dados no IndexedDB e enfileira sincronização.
+   * Não sobrescreve testes anteriores de mesmo lote ou amostra.
    */
-  async saveAvaliacao(avaliacaoData: Omit<Avaliacao, 'id' | 'germinacao' | 'percentualMortas' | 'percentualAnormais' | 'resultadoAprovacao'>): Promise<Avaliacao> {
+  async saveAvaliacao(avaliacaoData: Omit<Avaliacao, 'germinacao' | 'percentualMortas' | 'percentualAnormais' | 'resultadoAprovacao'> & { id?: string }): Promise<Avaliacao> {
     const amostra = this.getAmostraById(avaliacaoData.amostraId);
 
     const fortes = avaliacaoData.fortes || 0;
@@ -1500,16 +1656,58 @@ class StorageService {
     const minGerm = this.getMinGerminationForCultura(cultura);
     const resultadoAprovacao = germinacao >= minGerm ? 'Aprovado' : 'Reprovado';
 
-    const existing = this.getAvaliacaoByAmostraId(avaliacaoData.amostraId);
-    const id = existing ? existing.id : 'avl-' + avaliacaoData.amostraId;
+    // Determina id e testeNumero para não sobrescrever outros testes
+    let id = avaliacaoData.id;
+    let testeNumero = avaliacaoData.testeNumero;
+    let existing: Avaliacao | undefined;
+
+    if (id) {
+      existing = this.avaliacoes.find(a => a.id === id);
+      if (!testeNumero && existing?.testeNumero) {
+        testeNumero = existing.testeNumero;
+      }
+    } else if (testeNumero !== undefined) {
+      existing = this.avaliacoes.find(a => a.amostraId === avaliacaoData.amostraId && a.testeNumero === testeNumero);
+      id = existing ? existing.id : ('avl-' + avaliacaoData.amostraId + '-t' + testeNumero + '-' + Date.now().toString(36));
+    } else {
+      // Fallback sem id e sem testeNumero
+      const allTests = this.getAvaliacoesByAmostraId(avaliacaoData.amostraId);
+      if (allTests.length > 0) {
+        existing = allTests[allTests.length - 1];
+        id = existing.id;
+        testeNumero = existing.testeNumero ?? 1;
+      } else {
+        id = 'avl-' + avaliacaoData.amostraId;
+        testeNumero = 1;
+      }
+    }
+
+    const resolvedTesteNumero = testeNumero || 1;
+    let testeAnteriorId = avaliacaoData.testeAnteriorId || existing?.testeAnteriorId;
+    if (!testeAnteriorId && resolvedTesteNumero > 1) {
+      const prevTest = this.avaliacoes.find(a => a.amostraId === avaliacaoData.amostraId && a.testeNumero === (resolvedTesteNumero - 1));
+      if (prevTest) testeAnteriorId = prevTest.id;
+    }
 
     const plantulasEmergidas7dias = avaliacaoData.plantulasEmergidas7dias !== undefined 
       ? avaliacaoData.plantulasEmergidas7dias 
       : amostra?.plantulasEmergidas7dias;
 
+    const now = new Date();
+    const dataHora = avaliacaoData.dataHora || (avaliacaoData.dataAvaliacao ? `${avaliacaoData.dataAvaliacao}T${avaliacaoData.horaAvaliacao || '00:00'}:00` : now.toISOString());
+
+    const is7d = avaliacaoData.tipoLeitura === '7_dias';
+
     const newAvaliacao: Avaliacao = {
       ...avaliacaoData,
       id,
+      amostraId: avaliacaoData.amostraId,
+      loteId: avaliacaoData.loteId || amostra?.lote || '',
+      testeNumero: resolvedTesteNumero,
+      testeAnteriorId,
+      dataHora,
+      usuario: avaliacaoData.usuario || avaliacaoData.usuarioAvaliador,
+      resultado: resultadoAprovacao,
       plantulasEmergidas7dias,
       fortes,
       intermediarias,
@@ -1520,21 +1718,24 @@ class StorageService {
       percentualAnormais,
       percentualMortas,
       resultadoAprovacao,
+      statusTeste: is7d ? 'rascunho' : 'concluido',
     };
 
-    const is7d = avaliacaoData.tipoLeitura === '7_dias';
     let updatedAmostra: Amostra | undefined;
 
     if (amostra) {
+      const currentTotal = Math.max(amostra.totalTestes || 1, resolvedTesteNumero);
       updatedAmostra = {
         ...amostra,
         status: is7d ? 'Pendente' : 'Concluído',
+        totalTestes: currentTotal,
+        testeAtualNumero: resolvedTesteNumero,
         leitura7diasRealizada: amostra.leitura7diasRealizada || is7d,
-        dataRealizacao7dias: amostra.dataRealizacao7dias || (is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : undefined),
+        dataRealizacao7dias: amostra.dataRealizacao7dias || (is7d ? (avaliacaoData.dataAvaliacao || now.toISOString()) : undefined),
         plantulasEmergidas7dias: plantulasEmergidas7dias !== undefined ? plantulasEmergidas7dias : amostra.plantulasEmergidas7dias,
         leitura10diasRealizada: !is7d,
-        dataRealizacao10dias: !is7d ? (avaliacaoData.dataAvaliacao || new Date().toISOString()) : amostra.dataRealizacao10dias,
-        dataAtualizacao: new Date().toISOString(),
+        dataRealizacao10dias: !is7d ? (avaliacaoData.dataAvaliacao || now.toISOString()) : amostra.dataRealizacao10dias,
+        dataAtualizacao: now.toISOString(),
       };
     }
 
@@ -1549,12 +1750,12 @@ class StorageService {
       id: 'sync-avl-' + newAvaliacao.id,
       entidadeId: newAvaliacao.id,
       tipo: 'AVALIACAO_SAVE',
-      titulo: `Avaliação Final (${amostra?.protocolo || newAvaliacao.amostraId})`,
+      titulo: `Avaliação Teste ${resolvedTesteNumero} (${amostra?.protocolo || newAvaliacao.amostraId})`,
       payload: {
         avaliacao: newAvaliacao,
         amostra: updatedAmostra,
       },
-      dataCriacao: new Date().toISOString(),
+      dataCriacao: now.toISOString(),
       status: 'pendente',
       tentativas: 0,
     });
@@ -1585,9 +1786,10 @@ class StorageService {
     return newAvaliacao;
   }
 
-  async deleteAvaliacao(id: string): Promise<boolean> {
-    if (!id) return false;
-    const target = this.avaliacoes.find(a => a.id === id || a.amostraId === id);
+  async deleteAvaliacao(avaliacaoId: string): Promise<boolean> {
+    if (!avaliacaoId) return false;
+    // Excluir estritamente pelo ID único da avaliação/teste (avaliacaoId)
+    const target = this.avaliacoes.find(a => a.id === avaliacaoId);
     if (!target) return false;
 
     try {
@@ -1599,21 +1801,41 @@ class StorageService {
         id: 'sync-del-avl-' + target.id,
         entidadeId: target.id,
         tipo: 'AVALIACAO_DELETE',
-        titulo: `Exclusão avaliação (${target.id})`,
+        titulo: `Exclusão teste (${target.id})`,
         payload: { id: target.id, amostraId: target.amostraId },
         dataCriacao: new Date().toISOString(),
         status: 'pendente',
         tentativas: 0,
       });
 
+      // Se houver amostra associada, atualiza contadores/status sem excluir a amostra, sem excluir o lote e sem alterar dados cadastrais
       if (target.amostraId) {
         const remaining = this.avaliacoes.filter(a => a.amostraId === target.amostraId && a.id !== target.id);
-        if (remaining.length === 0) {
-          const amostra = this.getAmostraById(target.amostraId);
-          if (amostra) {
+        const amostra = this.getAmostraById(target.amostraId);
+        if (amostra) {
+          if (remaining.length === 0) {
+            // Nenhum teste restante para a amostra
             const updatedAmostra: Amostra = {
               ...amostra,
               status: 'Pendente',
+              totalTestes: 0,
+              testeAtualNumero: 1,
+              leitura10diasRealizada: false,
+              dataAtualizacao: new Date().toISOString(),
+            };
+            await indexedDbService.saveAmostraLocal(updatedAmostra);
+            const aIdx = this.amostras.findIndex(a => a.id === amostra.id);
+            if (aIdx !== -1) {
+              this.amostras[aIdx] = updatedAmostra;
+            }
+          } else {
+            // Outros testes permanecem intactos no histórico
+            const ultimoRestante = remaining[remaining.length - 1];
+            const updatedAmostra: Amostra = {
+              ...amostra,
+              totalTestes: remaining.length,
+              testeAtualNumero: ultimoRestante.testeNumero || remaining.length,
+              status: (ultimoRestante.statusTeste === 'concluido' || ultimoRestante.resultadoAprovacao) ? 'Concluído' : 'Pendente',
               dataAtualizacao: new Date().toISOString(),
             };
             await indexedDbService.saveAmostraLocal(updatedAmostra);
@@ -1625,10 +1847,11 @@ class StorageService {
         }
       }
 
+      // 3. Remove apenas o teste específico da memória e notifica a aplicação
       this.avaliacoes = this.avaliacoes.filter(a => a.id !== target.id);
       this.notify();
 
-      // 3. Sincroniza em segundo plano
+      // 4. Sincroniza em segundo plano
       if (typeof window !== 'undefined' && navigator.onLine) {
         setTimeout(() => this.processSyncQueue(), 50);
       }
