@@ -22,6 +22,9 @@ export interface Amostra {
   dataAtualizacao: string;
   quantidadeSementes?: number; // Padrão: 100
   tsiMatriz?: string;
+  dataInicioTeste?: string;   // Data de início do teste (YYYY-MM-DD)
+  dataLeitura7Dias?: string;  // Leitura de 7 dias (dataInicioTeste + 7 dias)
+  dataLeitura10Dias?: string; // Leitura de 10 dias (dataInicioTeste + 10 dias)
   dataLeitura7dias?: string;  // Calculado: dataSemeadura + 7 dias
   dataLeitura10dias?: string; // Calculado: dataSemeadura + 10 dias
   leitura7diasRealizada?: boolean;
@@ -62,6 +65,9 @@ export interface Avaliacao {
   resultado?: ResultadoAprovacao; // 'Aprovado' | 'Reprovado'
   tipoTeste?: string;         // 'Canteiro de Emergência' ou configurado
   statusTeste?: 'rascunho' | 'concluido';
+  dataInicioTeste?: string;   // Data de início do teste (YYYY-MM-DD)
+  dataLeitura7Dias?: string;  // Leitura de 7 dias = dataInicioTeste + 7 dias
+  dataLeitura10Dias?: string; // Leitura de 10 dias = dataInicioTeste + 10 dias
 }
 
 export interface FotoAmostra {

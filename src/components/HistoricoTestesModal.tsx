@@ -126,11 +126,22 @@ export const HistoricoTestesModal: React.FC<HistoricoTestesModalProps> = ({
                       <span className="px-2.5 py-1 bg-gray-900 text-white font-black text-xs rounded-lg">
                         TESTE {num}
                       </span>
-                      <span className="text-xs text-gray-500 flex items-center gap-1 font-medium">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                        Data: <strong>{formatDateBR(dataExibicao) || 'Não informada'}</strong>
-                        {teste.horaAvaliacao && <span> às {teste.horaAvaliacao}</span>}
-                      </span>
+                      {teste.dataInicioTeste ? (
+                        <span className="text-xs text-gray-700 flex items-center gap-1.5 flex-wrap font-medium">
+                          <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Início: <strong>{formatDateBR(teste.dataInicioTeste)}</strong></span>
+                          <span>•</span>
+                          <span>7d: <strong className="text-emerald-900">{formatDateBR(teste.dataLeitura7Dias)}</strong></span>
+                          <span>•</span>
+                          <span>10d: <strong className="text-teal-900">{formatDateBR(teste.dataLeitura10Dias)}</strong></span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500 flex items-center gap-1 font-medium">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                          Data: <strong>{formatDateBR(dataExibicao) || 'Não informada'}</strong>
+                          {teste.horaAvaliacao && <span> às {teste.horaAvaliacao}</span>}
+                        </span>
+                      )}
                     </div>
 
                     <div>

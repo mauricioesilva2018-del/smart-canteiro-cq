@@ -1498,7 +1498,12 @@ class StorageService {
 
     const now = new Date();
     const dataHora = now.toISOString();
-    const dataAvaliacao = dataHora.split('T')[0];
+    // Regra 1: A data de início do teste será a data em que o novo teste for criado
+    const dataInicioTeste = getTodayBR(); // YYYY-MM-DD
+    // Regra 2: Automaticamente calcular 7 e 10 dias
+    const dataLeitura7Dias = addDaysToDate(dataInicioTeste, 7);
+    const dataLeitura10Dias = addDaysToDate(dataInicioTeste, 10);
+    const dataAvaliacao = dataInicioTeste;
     const horaAvaliacao = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const newId = 'avl-' + amostra.id + '-t' + nextSeq + '-' + Date.now().toString(36);
@@ -1509,7 +1514,7 @@ class StorageService {
       loteId: amostra.lote,
       testeNumero: nextSeq,
       testeAnteriorId: testeAnteriorId,
-      tipoLeitura: '10_dias',
+      tipoLeitura: '7_dias',
       fortes: 0,
       intermediarias: 0,
       fracas: 0,
@@ -1524,6 +1529,9 @@ class StorageService {
       dataAvaliacao,
       horaAvaliacao,
       dataHora,
+      dataInicioTeste,
+      dataLeitura7Dias,
+      dataLeitura10Dias,
       usuarioAvaliador: usuarioNome,
       usuario: usuarioNome,
       tipoTeste: 'Canteiro de Emergência / Germinação em Areia',
@@ -1533,13 +1541,22 @@ class StorageService {
     // 1. Salva no IndexedDB local (Offline-First)
     await indexedDbService.saveAvaliacaoLocal(novaAvaliacao);
 
-    // 2. Atualiza a amostra mantendo dados cadastrais e marcando pendente para novo teste
+    // 2. Atualiza a amostra mantendo dados cadastrais e vinculando o novo teste e suas datas
     const updatedAmostra: Amostra = {
       ...amostra,
       status: 'Pendente',
       totalTestes: nextSeq,
       testeAtualNumero: nextSeq,
+      dataInicioTeste,
+      dataLeitura7Dias,
+      dataLeitura10Dias,
+      dataLeitura7dias: dataLeitura7Dias,
+      dataLeitura10dias: dataLeitura10Dias,
+      leitura7diasRealizada: false,
       leitura10diasRealizada: false,
+      dataRealizacao7dias: undefined,
+      dataRealizacao10dias: undefined,
+      plantulasEmergidas7dias: undefined,
       dataAtualizacao: now.toISOString(),
     };
     await indexedDbService.saveAmostraLocal(updatedAmostra);
@@ -1698,6 +1715,10 @@ class StorageService {
 
     const is7d = avaliacaoData.tipoLeitura === '7_dias';
 
+    const dataInicioTeste = avaliacaoData.dataInicioTeste || existing?.dataInicioTeste;
+    const dataLeitura7Dias = avaliacaoData.dataLeitura7Dias || existing?.dataLeitura7Dias;
+    const dataLeitura10Dias = avaliacaoData.dataLeitura10Dias || existing?.dataLeitura10Dias;
+
     const newAvaliacao: Avaliacao = {
       ...avaliacaoData,
       id,
@@ -1719,6 +1740,9 @@ class StorageService {
       percentualMortas,
       resultadoAprovacao,
       statusTeste: is7d ? 'rascunho' : 'concluido',
+      ...(dataInicioTeste ? { dataInicioTeste } : {}),
+      ...(dataLeitura7Dias ? { dataLeitura7Dias } : {}),
+      ...(dataLeitura10Dias ? { dataLeitura10Dias } : {}),
     };
 
     let updatedAmostra: Amostra | undefined;
@@ -1730,6 +1754,9 @@ class StorageService {
         status: is7d ? 'Pendente' : 'Concluído',
         totalTestes: currentTotal,
         testeAtualNumero: resolvedTesteNumero,
+        ...(dataInicioTeste ? { dataInicioTeste } : {}),
+        ...(dataLeitura7Dias ? { dataLeitura7Dias, dataLeitura7dias: dataLeitura7Dias } : {}),
+        ...(dataLeitura10Dias ? { dataLeitura10Dias, dataLeitura10dias: dataLeitura10Dias } : {}),
         leitura7diasRealizada: amostra.leitura7diasRealizada || is7d,
         dataRealizacao7dias: amostra.dataRealizacao7dias || (is7d ? (avaliacaoData.dataAvaliacao || now.toISOString()) : undefined),
         plantulasEmergidas7dias: plantulasEmergidas7dias !== undefined ? plantulasEmergidas7dias : amostra.plantulasEmergidas7dias,

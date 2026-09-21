@@ -151,6 +151,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
     try {
       const novo = await storageService.criarNovoReteste(amostra.id, currentUser.nome);
       const updatedList = storageService.getAvaliacoesByAmostraId(amostra.id);
+      const updatedAmostra = storageService.getAmostraById(amostra.id);
+      if (updatedAmostra) {
+        setAmostra(updatedAmostra);
+      }
       setAllTestes(updatedList);
       setExistingAvaliacao(novo);
       setActiveTesteId(novo.id);
@@ -170,7 +174,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       setShowNovoTesteModal(false);
       setToast({
         type: 'success',
-        message: `Novo Teste ${novo.testeNumero || updatedList.length} iniciado! O teste anterior permanece intacto no histórico.`
+        message: `Novo Teste ${novo.testeNumero || updatedList.length} criado com sucesso! Início: ${formatDateBR(novo.dataInicioTeste)}. Leituras agendadas para 7 e 10 dias.`
       });
     } catch (error) {
       setToast({
@@ -287,6 +291,19 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         usuario: currentUser.nome,
       });
 
+      // Também sincroniza com a avaliação do teste ativo se existir
+      if (existingAvaliacao) {
+        const savedAvl = await storageService.saveAvaliacao({
+          ...existingAvaliacao,
+          plantulasEmergidas7dias: emergidas7d,
+          tipoLeitura: '7_dias',
+          dataInicioTeste: existingAvaliacao.dataInicioTeste,
+          dataLeitura7Dias: existingAvaliacao.dataLeitura7Dias,
+          dataLeitura10Dias: existingAvaliacao.dataLeitura10Dias,
+        });
+        setExistingAvaliacao(savedAvl);
+      }
+
       setAmostra(updated);
       setToast({
         type: 'success',
@@ -348,6 +365,9 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         horaAvaliacao,
         usuarioAvaliador: currentUser.nome,
         usuario: currentUser.nome,
+        dataInicioTeste: existingAvaliacao?.dataInicioTeste,
+        dataLeitura7Dias: existingAvaliacao?.dataLeitura7Dias,
+        dataLeitura10Dias: existingAvaliacao?.dataLeitura10Dias,
       });
 
       setExistingAvaliacao(saved);
@@ -415,6 +435,9 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         horaAvaliacao,
         usuarioAvaliador: currentUser.nome,
         usuario: currentUser.nome,
+        dataInicioTeste: existingAvaliacao?.dataInicioTeste,
+        dataLeitura7Dias: existingAvaliacao?.dataLeitura7Dias,
+        dataLeitura10Dias: existingAvaliacao?.dataLeitura10Dias,
       });
 
       setExistingAvaliacao(saved);
@@ -654,20 +677,31 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
           <div><span className="text-gray-500 font-medium">Peneira / Cat:</span> <p className="font-bold text-gray-900">{amostra.peneira} • {amostra.categoria}</p></div>
           <div><span className="text-gray-500 font-medium">Safra:</span> <p className="font-bold text-gray-900">{amostra.safra}</p></div>
           <div><span className="text-gray-500 font-medium">Qtd. Sementes:</span> <p className="font-bold text-[#1b4332]">100 sementes</p></div>
-          <div><span className="text-gray-500 font-medium">Data Lançamento:</span> <p className="font-bold text-gray-800">{formatDateBR(amostra.dataSemeadura)}</p></div>
           <div>
-            <span className="text-gray-500 font-medium">Prev. 7 Dias (+7d):</span> 
+            <span className="text-gray-500 font-medium">
+              {existingAvaliacao?.dataInicioTeste ? 'Início do Teste:' : 'Data Lançamento:'}
+            </span> 
+            <p className="font-bold text-gray-800">
+              {formatDateBR(existingAvaliacao?.dataInicioTeste || amostra.dataSemeadura)}
+            </p>
+          </div>
+          <div>
+            <span className="text-gray-500 font-medium">
+              {existingAvaliacao?.dataLeitura7Dias ? 'Leitura 7 Dias:' : 'Prev. 7 Dias (+7d):'}
+            </span> 
             <p className="font-black text-[#1b4332] flex items-center gap-1">
-              <span>{formatDateBR(amostra.dataLeitura7dias || addDaysToDate(amostra.dataSemeadura, 7))}</span>
+              <span>{formatDateBR(existingAvaliacao?.dataLeitura7Dias || amostra.dataLeitura7dias || addDaysToDate(amostra.dataSemeadura, 7))}</span>
               {(amostra.leitura7diasRealizada || amostra.plantulasEmergidas7dias !== undefined) && (
                 <span title="Leitura de 7 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
               )}
             </p>
           </div>
           <div>
-            <span className="text-gray-500 font-medium">Prev. 10 Dias (+10d):</span> 
+            <span className="text-gray-500 font-medium">
+              {existingAvaliacao?.dataLeitura10Dias ? 'Leitura 10 Dias:' : 'Prev. 10 Dias (+10d):'}
+            </span> 
             <p className="font-black text-[#1b4332] flex items-center gap-1">
-              <span>{formatDateBR(amostra.dataLeitura10dias || addDaysToDate(amostra.dataSemeadura, 10))}</span>
+              <span>{formatDateBR(existingAvaliacao?.dataLeitura10Dias || amostra.dataLeitura10dias || addDaysToDate(amostra.dataSemeadura, 10))}</span>
               {amostra.leitura10diasRealizada && (
                 <span title="Leitura de 10 dias realizada"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /></span>
               )}
@@ -675,6 +709,68 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
           </div>
           <div><span className="text-gray-500 font-medium">Matriz / TSI:</span> <p className="font-bold text-gray-900">{amostra.tsiMatriz || 'Padrão TSI'}</p></div>
         </div>
+
+        {/* CRONOGRAMA AUTOMÁTICO DO NOVO TESTE */}
+        {existingAvaliacao?.dataInicioTeste && (
+          <div 
+            id="card-cronograma-novo-teste" 
+            className="bg-emerald-50/70 border-2 border-emerald-500/30 rounded-2xl p-4 shadow-sm space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/70 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-700 text-white rounded-lg">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-[#1b4332]">
+                    Cronograma de Leituras — Teste {activeTesteNumero}
+                  </h4>
+                  <p className="text-[11px] text-gray-600 font-medium">
+                    Calculado automaticamente a partir do início deste teste
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full">
+                Cálculo Automático
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* INÍCIO DO TESTE */}
+              <div id="card-cronograma-inicio" className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-xs flex flex-col justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-gray-700 block">
+                  INÍCIO DO TESTE
+                </span>
+                <p className="text-lg sm:text-xl font-black text-gray-900 mt-1">
+                  {formatDateBR(existingAvaliacao.dataInicioTeste)}
+                </p>
+                <span className="text-[11px] text-gray-500 font-medium mt-0.5">Data de criação do teste</span>
+              </div>
+
+              {/* 📅 LEITURA 7 DIAS */}
+              <div id="card-cronograma-7dias" className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-xs flex flex-col justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                  <span className="text-sm">📅</span> LEITURA 7 DIAS
+                </span>
+                <p className="text-lg sm:text-xl font-black text-emerald-900 mt-1">
+                  {formatDateBR(existingAvaliacao.dataLeitura7Dias)}
+                </p>
+                <span className="text-[11px] text-emerald-700 font-medium mt-0.5">Contagem Emergência (+7 dias)</span>
+              </div>
+
+              {/* 📅 LEITURA 10 DIAS */}
+              <div id="card-cronograma-10dias" className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-xs flex flex-col justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
+                  <span className="text-sm">📅</span> LEITURA 10 DIAS
+                </span>
+                <p className="text-lg sm:text-xl font-black text-teal-900 mt-1">
+                  {formatDateBR(existingAvaliacao.dataLeitura10Dias)}
+                </p>
+                <span className="text-[11px] text-teal-700 font-medium mt-0.5">Avaliação Final (+10 dias)</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* SELETOR CLARO DA ETAPA DE LEITURA (7 DIAS vs 10 DIAS) */}
         <div className="pt-2 border-t border-gray-100">

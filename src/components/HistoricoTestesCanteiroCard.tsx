@@ -126,11 +126,22 @@ export const HistoricoTestesCanteiroCard: React.FC<HistoricoTestesCanteiroCardPr
 
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                        Data: <strong className="text-gray-900">{formatDateBR(dataExibicao) || 'Não informada'}</strong>
-                        {teste.horaAvaliacao && <span className="text-gray-500"> às {teste.horaAvaliacao}</span>}
-                      </span>
+                      {teste.dataInicioTeste ? (
+                        <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5 flex-wrap">
+                          <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Início: <strong className="text-gray-900">{formatDateBR(teste.dataInicioTeste)}</strong></span>
+                          <span className="text-gray-300">•</span>
+                          <span>7d: <strong className="text-emerald-900">{formatDateBR(teste.dataLeitura7Dias)}</strong></span>
+                          <span className="text-gray-300">•</span>
+                          <span>10d: <strong className="text-teal-900">{formatDateBR(teste.dataLeitura10Dias)}</strong></span>
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                          Data: <strong className="text-gray-900">{formatDateBR(dataExibicao) || 'Não informada'}</strong>
+                          {teste.horaAvaliacao && <span className="text-gray-500"> às {teste.horaAvaliacao}</span>}
+                        </span>
+                      )}
 
                       <span className="text-gray-300">•</span>
 
