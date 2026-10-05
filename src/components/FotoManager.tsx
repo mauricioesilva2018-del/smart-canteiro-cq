@@ -1,38 +1,62 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FotoAmostra } from '../types';
+import { FotoAmostra, Avaliacao } from '../types';
 import { storageService } from '../services/storageService';
-import { Camera, Image as ImageIcon, Trash2, ZoomIn, X, Plus, Loader2, RefreshCw, Clock, CheckCircle2 } from 'lucide-react';
+import { Camera, Image as ImageIcon, Trash2, ZoomIn, X, Loader2, RefreshCw, Clock, CheckCircle2, Tag } from 'lucide-react';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
 import { compressImageFile } from '../utils/imageUtils';
 
 interface FotoManagerProps {
   amostraId: string;
+  testeNumero?: number;
+  avaliacaoId?: string;
   readOnly?: boolean;
 }
 
-export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = false }) => {
-  const [fotos, setFotos] = useState<FotoAmostra[]>(storageService.getFotosByAmostra(amostraId));
+export const FotoManager: React.FC<FotoManagerProps> = ({ 
+  amostraId, 
+  testeNumero, 
+  avaliacaoId, 
+  readOnly = false 
+}) => {
+  const [fotos, setFotos] = useState<FotoAmostra[]>(() => storageService.getFotosByAmostra(amostraId));
+  const [testes, setTestes] = useState<Avaliacao[]>(() => storageService.getAvaliacoesByAmostraId(amostraId));
   const [activeZoomFoto, setActiveZoomFoto] = useState<FotoAmostra | null>(null);
   const [fotoToDelete, setFotoToDelete] = useState<FotoAmostra | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
+  // Tab de filtro de visualização: 'todos' ou número do teste específico
+  const [filtroTeste, setFiltroTeste] = useState<number | 'todos'>(testeNumero || 'todos');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const refreshFotos = () => {
+  const refreshData = () => {
     setFotos(storageService.getFotosByAmostra(amostraId));
+    setTestes(storageService.getAvaliacoesByAmostraId(amostraId));
   };
 
   useEffect(() => {
-    refreshFotos();
+    refreshData();
     const unsubscribe = storageService.subscribe(() => {
-      refreshFotos();
+      refreshData();
     });
     return () => unsubscribe();
   }, [amostraId]);
+
+  // Se testeNumero mudar nas props, atualiza o filtro padrão se o usuário desejar
+  useEffect(() => {
+    if (testeNumero) {
+      setFiltroTeste(testeNumero);
+    }
+  }, [testeNumero]);
+
+  // Determina qual teste será vinculado às novas fotos capturadas
+  const targetTesteParaUpload = typeof filtroTeste === 'number' 
+    ? filtroTeste 
+    : (testeNumero || 1);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -45,22 +69,44 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
         // Comprime a imagem para garantir tamanho otimizado (<300KB) e compatibilidade com Firestore
         const compressedBase64 = await compressImageFile(file, 1280, 1280, 0.82);
         if (compressedBase64) {
+          const nomeFoto = `Foto Teste ${targetTesteParaUpload} - ${file.name}`;
+          const descFoto = `Foto capturada para o Teste ${targetTesteParaUpload} em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+          
           await storageService.addFoto(
             amostraId,
             compressedBase64,
-            file.name,
-            `Foto capturada em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+            nomeFoto,
+            descFoto,
+            targetTesteParaUpload,
+            avaliacaoId
           );
         }
       }
-      setToast({ type: 'success', message: 'Foto salva com segurança no dispositivo!' });
-      refreshFotos();
+      setToast({ 
+        type: 'success', 
+        message: `Foto salva com sucesso e vinculada ao TESTE ${targetTesteParaUpload}!` 
+      });
+      refreshData();
     } catch (err) {
       console.error('Erro ao processar foto:', err);
       setToast({ type: 'error', message: 'Erro ao processar imagem.' });
     } finally {
       setIsProcessing(false);
       if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleChangeFotoTeste = async (fotoId: string, novoTesteNum: number) => {
+    try {
+      const targetAvaliacao = testes.find(t => (t.testeNumero ?? 1) === novoTesteNum);
+      await storageService.updateFotoTeste(fotoId, novoTesteNum, targetAvaliacao?.id);
+      setToast({ 
+        type: 'success', 
+        message: `Foto reatribuída com sucesso para o Teste ${novoTesteNum}.` 
+      });
+      refreshData();
+    } catch (err) {
+      setToast({ type: 'error', message: 'Erro ao alterar vínculo do teste da foto.' });
     }
   };
 
@@ -91,7 +137,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
           message: 'Todas as fotos já estão sincronizadas com o servidor (🟢).' 
         });
       }
-      refreshFotos();
+      refreshData();
     } catch (err: any) {
       setToast({ 
         type: 'error', 
@@ -108,7 +154,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
       const success = await storageService.deleteFoto(fotoToDelete.id);
       if (success) {
         setToast({ type: 'success', message: 'Registro excluído com sucesso.' });
-        refreshFotos();
+        refreshData();
         if (activeZoomFoto?.id === fotoToDelete.id) {
           setActiveZoomFoto(null);
         }
@@ -124,9 +170,71 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
 
   const pendingCount = fotos.filter(f => f.syncStatus === 'pendente' || f.syncStatus === 'sincronizando' || f.syncStatus === 'erro').length;
 
+  // Lista de números de testes existentes para filtro e seleção
+  const maxTesteNum = Math.max(
+    testes.length > 0 ? Math.max(...testes.map(t => t.testeNumero ?? 1)) : 1,
+    testeNumero || 1,
+    fotos.length > 0 ? Math.max(...fotos.map(f => f.testeNumero ?? 1)) : 1
+  );
+
+  const availableTestesNumeros = Array.from({ length: maxTesteNum }, (_, i) => i + 1);
+
+  // Filtra fotos conforme seleção da aba
+  const displayedFotos = fotos.filter(f => {
+    if (filtroTeste === 'todos') return true;
+    return (f.testeNumero ?? 1) === filtroTeste;
+  });
+
   return (
     <div className="space-y-4">
       
+      {/* Abas de Filtro e Seleção por Teste */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setFiltroTeste('todos')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              filtroTeste === 'todos'
+                ? 'bg-[#1b4332] text-white shadow-xs'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+          >
+            Todas as Fotos ({fotos.length})
+          </button>
+
+          {availableTestesNumeros.map((num) => {
+            const count = fotos.filter(f => (f.testeNumero ?? 1) === num).length;
+            const isSelected = filtroTeste === num;
+            return (
+              <button
+                key={num}
+                type="button"
+                onClick={() => setFiltroTeste(num)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                  isSelected
+                    ? 'bg-[#2d6a4f] text-white shadow-xs'
+                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
+                }`}
+              >
+                <span>Teste {num}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-emerald-200 text-emerald-950'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Indicador de Vínculo das Novas Fotos */}
+        <div className="flex items-center gap-1.5 text-xs font-bold text-[#1b4332] bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+          <Tag className="w-3.5 h-3.5 text-[#2d6a4f]" />
+          <span>Novas fotos vincularão ao: <strong>TESTE {targetTesteParaUpload}</strong></span>
+        </div>
+      </div>
+
       {/* Botão e Banner de Sincronização Manual */}
       <div className={`flex flex-col sm:flex-row items-center justify-between gap-2 p-3 rounded-xl border transition-all ${
         pendingCount > 0 
@@ -182,7 +290,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
             ) : (
               <Camera className="w-5 h-5 text-[#d8f3dc]" />
             )}
-            <span>{isProcessing ? 'Processando Foto...' : 'Tirar Foto (Câmera)'}</span>
+            <span>{isProcessing ? 'Processando Foto...' : `Tirar Foto (Teste ${targetTesteParaUpload})`}</span>
           </button>
           <input
             ref={cameraInputRef}
@@ -222,74 +330,111 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
       )}
 
       {/* Grid de Miniaturas */}
-      {fotos.length === 0 ? (
+      {displayedFotos.length === 0 ? (
         <div className="p-6 text-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
           <Camera className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <p className="text-xs font-semibold text-gray-600">Nenhuma foto do canteiro anexada</p>
-          <p className="text-[11px] text-gray-400">Tire fotos pelo celular para registrar o estado das plântulas.</p>
+          <p className="text-xs font-semibold text-gray-600">
+            {filtroTeste === 'todos' 
+              ? 'Nenhuma foto anexada a este lote' 
+              : `Nenhuma foto vinculada ao Teste ${filtroTeste}`}
+          </p>
+          <p className="text-[11px] text-gray-400">
+            Tire fotos pelo celular para registrar o estado das plântulas deste teste.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {fotos.map((foto) => (
-            <div
-              key={foto.id}
-              className="group relative bg-gray-900 rounded-xl overflow-hidden border border-gray-200 aspect-4/3 shadow-xs hover:shadow-md transition-all"
-            >
-              <img
-                src={foto.foto}
-                alt={foto.nome || 'Foto canteiro'}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
+          {displayedFotos.map((foto) => {
+            const numTesteFoto = foto.testeNumero ?? 1;
 
-              {/* Status Badge (Offline-First Indicator) */}
-              <div className="absolute top-1.5 left-1.5 z-10">
-                {foto.syncStatus === 'erro' ? (
-                  <span className="bg-rose-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
-                    🔴 Erro
-                  </span>
-                ) : foto.syncStatus === 'pendente' || foto.syncStatus === 'sincronizando' ? (
-                  <span className="bg-amber-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
-                    🟠 No Dispositivo
-                  </span>
-                ) : (
-                  <span className="bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
-                    🟢 Sincronizado
-                  </span>
-                )}
-              </div>
+            return (
+              <div
+                key={foto.id}
+                className="group relative bg-gray-900 rounded-xl overflow-hidden border border-gray-200 aspect-4/3 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                <img
+                  src={foto.foto}
+                  alt={foto.nome || 'Foto canteiro'}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
 
-              {/* Overlay Controls */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
-                <div className="flex items-center justify-end gap-1">
-                  {!readOnly && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setFotoToDelete(foto);
-                      }}
-                      className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer"
-                      title="Excluir Foto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                {/* Badges de Identificação do Teste e Sync */}
+                <div className="absolute top-1.5 left-1.5 z-10 flex flex-col gap-1 items-start">
+                  <span className="bg-[#1b4332]/90 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs backdrop-blur-xs border border-emerald-400/30">
+                    TESTE {numTesteFoto}
+                  </span>
+
+                  {foto.syncStatus === 'erro' ? (
+                    <span className="bg-rose-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                      🔴 Erro
+                    </span>
+                  ) : foto.syncStatus === 'pendente' || foto.syncStatus === 'sincronizando' ? (
+                    <span className="bg-amber-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                      🟠 No Dispositivo
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-xs backdrop-blur-xs">
+                      🟢 Nuvem
+                    </span>
                   )}
                 </div>
 
-                <div 
-                  onClick={() => setActiveZoomFoto(foto)}
-                  className="cursor-pointer flex items-center justify-between text-white"
-                >
-                  <span className="text-[10px] font-bold truncate max-w-[80%]">
-                    {foto.nome || 'Foto'}
-                  </span>
-                  <ZoomIn className="w-4 h-4 text-[#d8f3dc]" />
-                </div>
-              </div>
+                {/* Overlay Controls */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 opacity-90 sm:opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                  <div className="flex items-center justify-end gap-1">
+                    {!readOnly && (
+                      <select
+                        value={numTesteFoto}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleChangeFotoTeste(foto.id, Number(e.target.value));
+                        }}
+                        className="bg-black/70 text-white text-[10px] font-bold px-1.5 py-1 rounded-md border border-white/30 cursor-pointer focus:outline-none"
+                        title="Alterar teste vinculado a esta foto"
+                      >
+                        {availableTestesNumeros.map(n => (
+                          <option key={n} value={n} className="bg-gray-800 text-white">
+                            Mover para Teste {n}
+                          </option>
+                        ))}
+                      </select>
+                    )}
 
-            </div>
-          ))}
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setFotoToDelete(foto);
+                        }}
+                        className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors shadow-sm cursor-pointer"
+                        title="Excluir Foto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div 
+                    onClick={() => setActiveZoomFoto(foto)}
+                    className="cursor-pointer flex items-center justify-between text-white pt-2"
+                  >
+                    <div className="truncate max-w-[80%]">
+                      <span className="text-[10px] font-bold block truncate">
+                        {foto.nome || `Foto Teste ${numTesteFoto}`}
+                      </span>
+                      <span className="text-[9px] text-gray-300 block">
+                        Vinculada ao Teste {numTesteFoto}
+                      </span>
+                    </div>
+                    <ZoomIn className="w-4 h-4 text-[#d8f3dc] shrink-0" />
+                  </div>
+                </div>
+
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -304,7 +449,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
                 e.preventDefault();
                 setActiveZoomFoto(null);
               }}
-              className="absolute -top-12 right-0 p-2 text-white bg-white/20 hover:bg-white/40 rounded-full transition-colors"
+              className="absolute -top-12 right-0 p-2 text-white bg-white/20 hover:bg-white/40 rounded-full transition-colors cursor-pointer"
             >
               <X className="w-6 h-6" />
             </button>
@@ -316,9 +461,12 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
             />
 
             <div className="mt-4 text-center text-white">
+              <div className="inline-block bg-[#1b4332] text-white text-xs font-black px-3 py-1 rounded-full mb-1 border border-emerald-400/40">
+                VINCULADA AO TESTE {activeZoomFoto.testeNumero || 1}
+              </div>
               <p className="font-bold text-sm">{activeZoomFoto.nome}</p>
               <p className="text-xs text-gray-300 mt-0.5">
-                Enviado em {new Date(activeZoomFoto.dataUpload).toLocaleString('pt-BR')}
+                Registrado em {new Date(activeZoomFoto.dataUpload).toLocaleString('pt-BR')}
               </p>
             </div>
 
@@ -331,7 +479,7 @@ export const FotoManager: React.FC<FotoManagerProps> = ({ amostraId, readOnly = 
         isOpen={!!fotoToDelete}
         itemName={fotoToDelete?.nome || 'Foto'}
         title="Excluir Foto"
-        message="Tem certeza que deseja excluir este registro?"
+        message="Tem certeza que deseja excluir esta foto?"
         onCancel={() => setFotoToDelete(null)}
         onConfirm={handleConfirmDeleteFoto}
       />

@@ -78,6 +78,8 @@ export interface FotoAmostra {
   nome?: string;
   descricao?: string;
   syncStatus?: SyncItemStatus;
+  testeNumero?: number;       // 1 = Teste 1, 2 = Teste 2, 3 = Teste 3...
+  avaliacaoId?: string;       // Vínculo ao ID específico do teste
 }
 
 export interface Usuario {

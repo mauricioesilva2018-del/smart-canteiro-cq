@@ -3,44 +3,98 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Amostra, Avaliacao, FotoAmostra } from '../types';
 import { storageService } from './storageService';
+import { formatDateBR } from '../utils/dateUtils';
 
 export const exportService = {
-  // --- EXCEL EXPORT ---
+  // --- EXCEL EXPORT (MULTI-TESTES POR LOTE) ---
   exportToExcel(amostras: Amostra[], fileName: string = 'Relatorio_Controle_Qualidade_Sementes') {
-    const avaliacoes = storageService.getAvaliacoes();
+    const dataRows: any[] = [];
 
-    const dataRows = amostras.map(amostra => {
-      const avaliacao = avaliacoes.find(a => a.amostraId === amostra.id);
-      const emerg7d = amostra.plantulasEmergidas7dias !== undefined 
-        ? amostra.plantulasEmergidas7dias 
-        : (avaliacao?.plantulasEmergidas7dias !== undefined ? avaliacao.plantulasEmergidas7dias : undefined);
+    amostras.forEach(amostra => {
+      // Busca todos os testes cadastrados para este lote/amostra
+      const testes = storageService.getAvaliacoesByAmostraId(amostra.id);
 
-      return {
-        'Protocolo': amostra.protocolo,
-        'Cultura': amostra.cultura,
-        'Cultivar': amostra.cultivar,
-        'Número do Lote': amostra.lote,
-        'Peneira': amostra.peneira,
-        'Categoria': amostra.categoria,
-        'Safra': amostra.safra,
-        'Data Lançamento': amostra.dataSemeadura,
-        'Prev. Leitura 7d': amostra.dataLeitura7dias || '-',
-        'Prev. Leitura 10d': amostra.dataLeitura10dias || '-',
-        'Emergência 7 Dias (%)': emerg7d !== undefined ? `${emerg7d}%` : '-',
-        'Fortes (10d)': avaliacao ? avaliacao.fortes : '-',
-        'Intermediárias (10d)': avaliacao ? avaliacao.intermediarias : '-',
-        'Fracas (10d)': avaliacao ? avaliacao.fracas : '-',
-        'Anormais (10d)': avaliacao ? (avaliacao.anormais ?? 0) : '-',
-        'Mortas (10d)': avaliacao ? avaliacao.mortas : '-',
-        'Germinação Final (%)': avaliacao ? `${avaliacao.germinacao}%` : '-',
-        'Anormais (%)': avaliacao ? `${avaliacao.percentualAnormais ?? avaliacao.anormais ?? 0}%` : '-',
-        'Mortas (%)': avaliacao ? `${avaliacao.percentualMortas}%` : '-',
-        'Resultado CQ': avaliacao ? avaliacao.resultadoAprovacao : 'Pendente',
-        'Avaliador / Responsável': avaliacao ? avaliacao.usuarioAvaliador : amostra.responsavel,
-        'Data da Avaliação': avaliacao ? `${avaliacao.dataAvaliacao} ${avaliacao.horaAvaliacao}` : '-',
-        'Status Amostra': amostra.status,
-        'Observações': avaliacao?.observacoes || amostra.obsLeitura7dias || amostra.observacoes || '',
-      };
+      if (testes.length === 0) {
+        // Amostra cadastrada ainda sem avaliações
+        const emerg7d = amostra.plantulasEmergidas7dias;
+        dataRows.push({
+          'Identificação do Teste': 'Teste 1 (Pendente)',
+          'Nº Teste': 1,
+          'Protocolo': amostra.protocolo,
+          'Número do Lote': amostra.lote,
+          'Cultura': amostra.cultura,
+          'Cultivar': amostra.cultivar,
+          'Peneira': amostra.peneira || 'N/A',
+          'Categoria': amostra.categoria,
+          'Safra': amostra.safra,
+          'Data Lançamento / Semeadura': amostra.dataSemeadura,
+          'Início do Teste': amostra.dataInicioTeste || amostra.dataSemeadura,
+          'Prev. Leitura 7d': amostra.dataLeitura7Dias || amostra.dataLeitura7dias || '-',
+          'Prev. Leitura 10d': amostra.dataLeitura10Dias || amostra.dataLeitura10dias || '-',
+          'Emergência 7 Dias (%)': emerg7d !== undefined ? `${emerg7d}%` : '-',
+          'Fortes (10d)': '-',
+          'Intermediárias (10d)': '-',
+          'Fracas (10d)': '-',
+          'Anormais (10d)': '-',
+          'Mortas (10d)': '-',
+          'Germinação Final (%)': '-',
+          'Anormais (%)': '-',
+          'Mortas (%)': '-',
+          'Resultado CQ': 'Pendente',
+          'Avaliador / Responsável': amostra.responsavel,
+          'Data do Teste': '-',
+          'Hora do Teste': '-',
+          'Status do Teste': amostra.status,
+          'Total Testes Lote': 0,
+          'Rastreabilidade': 'Sem testes adicionais',
+          'Observações': amostra.obsLeitura7dias || amostra.observacoes || '',
+        });
+      } else {
+        // UMA LINHA PARA CADA TESTE DO LOTE (Lote 1 -> Teste 1, Lote 1 -> Teste 2, ...)
+        testes.forEach((teste, idx) => {
+          const numTeste = teste.testeNumero ?? (idx + 1);
+          const emerg7d = teste.plantulasEmergidas7dias !== undefined 
+            ? teste.plantulasEmergidas7dias 
+            : amostra.plantulasEmergidas7dias;
+
+          const dataHoraTeste = teste.dataHora || (teste.dataAvaliacao ? `${teste.dataAvaliacao}T${teste.horaAvaliacao || '00:00'}:00` : '');
+          const dataTesteFormatada = teste.dataAvaliacao || (dataHoraTeste ? dataHoraTeste.split('T')[0] : '-');
+          const horaTesteFormatada = teste.horaAvaliacao || (dataHoraTeste && dataHoraTeste.includes('T') ? dataHoraTeste.split('T')[1].substring(0, 5) : '-');
+
+          dataRows.push({
+            'Identificação do Teste': `Teste ${numTeste}`,
+            'Nº Teste': numTeste,
+            'Protocolo': amostra.protocolo,
+            'Número do Lote': amostra.lote,
+            'Cultura': amostra.cultura,
+            'Cultivar': amostra.cultivar,
+            'Peneira': amostra.peneira || 'N/A',
+            'Categoria': amostra.categoria,
+            'Safra': amostra.safra,
+            'Data Lançamento / Semeadura': amostra.dataSemeadura,
+            'Início do Teste': teste.dataInicioTeste || amostra.dataInicioTeste || amostra.dataSemeadura,
+            'Prev. Leitura 7d': teste.dataLeitura7Dias || amostra.dataLeitura7Dias || amostra.dataLeitura7dias || '-',
+            'Prev. Leitura 10d': teste.dataLeitura10Dias || amostra.dataLeitura10Dias || amostra.dataLeitura10dias || '-',
+            'Emergência 7 Dias (%)': emerg7d !== undefined ? `${emerg7d}%` : '-',
+            'Fortes (10d)': teste.fortes ?? 0,
+            'Intermediárias (10d)': teste.intermediarias ?? 0,
+            'Fracas (10d)': teste.fracas ?? 0,
+            'Anormais (10d)': teste.anormais ?? 0,
+            'Mortas (10d)': teste.mortas ?? 0,
+            'Germinação Final (%)': `${teste.germinacao ?? 0}%`,
+            'Anormais (%)': `${teste.percentualAnormais ?? teste.anormais ?? 0}%`,
+            'Mortas (%)': `${teste.percentualMortas ?? 0}%`,
+            'Resultado CQ': teste.resultado || teste.resultadoAprovacao || 'Pendente',
+            'Avaliador / Responsável': teste.usuario || teste.usuarioAvaliador || amostra.responsavel,
+            'Data do Teste': dataTesteFormatada,
+            'Hora do Teste': horaTesteFormatada,
+            'Status do Teste': teste.statusTeste === 'concluido' ? 'Concluído' : (teste.statusTeste === 'rascunho' ? 'Rascunho' : 'Concluído'),
+            'Total Testes Lote': testes.length,
+            'Rastreabilidade': teste.testeAnteriorId ? `Vinculado ao Teste ${numTeste - 1}` : (numTeste > 1 ? `Teste anterior #${numTeste - 1}` : 'Teste Inicial'),
+            'Observações': teste.observacoes || amostra.observacoes || '',
+          });
+        });
+      }
     });
 
     const worksheet = XLSX.utils.json_to_sheet(dataRows);
@@ -58,325 +112,416 @@ export const exportService = {
     XLSX.writeFile(workbook, `${fileName}_${formattedDate}.xlsx`);
   },
 
-  // --- PDF REPORT FOR A SINGLE SAMPLE OR MULTIPLE ---
-  generateSamplePDF(amostra: Amostra, avaliacao?: Avaliacao, fotos: FotoAmostra[] = []) {
+  // --- LAUDO TÉCNICO PDF (CONSIDERA TODOS OS TESTES DO LOTE COM SUAS RESPECTIVAS FOTOS) ---
+  generateSamplePDF(
+    amostra: Amostra, 
+    avaliacaoOuTestes?: Avaliacao | Avaliacao[], 
+    fotosParam?: FotoAmostra[]
+  ) {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
       format: 'a4',
     });
 
+    // 1. Resolução de Testes do Lote (Ordem cronológica crescente: Teste 1, Teste 2...)
+    let testes: Avaliacao[] = [];
+    if (Array.isArray(avaliacaoOuTestes) && avaliacaoOuTestes.length > 0) {
+      testes = avaliacaoOuTestes;
+    } else {
+      const dbTestes = storageService.getAvaliacoesByAmostraId(amostra.id);
+      if (dbTestes.length > 0) {
+        testes = dbTestes;
+      } else if (avaliacaoOuTestes && !Array.isArray(avaliacaoOuTestes)) {
+        testes = [avaliacaoOuTestes];
+      }
+    }
+
+    testes = testes.sort((a, b) => (a.testeNumero ?? 1) - (b.testeNumero ?? 1));
+
+    // 2. Resolução de Fotos do Lote
+    const allFotos: FotoAmostra[] = (fotosParam && fotosParam.length > 0)
+      ? fotosParam
+      : storageService.getFotosByAmostra(amostra.id);
+
     const primaryColor = [27, 67, 50]; // #1b4332 Dark Green
     const accentColor = [45, 106, 79]; // #2d6a4f
     const lightBg = [240, 247, 244];
 
-    // Header Banner
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 0, 210, 32, 'F');
+    // Helper: desenha cabeçalho padrão
+    const renderHeaderBanner = (isContinuation: boolean = false) => {
+      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+      doc.rect(0, 0, 210, isContinuation ? 22 : 30, 'F');
 
-    // Header Title
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.text('SMART CANTEIRO CQ', 14, 15);
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(isContinuation ? 14 : 18);
+      doc.text(
+        isContinuation ? `SMART CANTEIRO CQ — CONTINUAÇÃO (LOTE: ${amostra.lote})` : 'SMART CANTEIRO CQ', 
+        14, 
+        isContinuation ? 14 : 14
+      );
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text('Relatório Técnico de Controle de Qualidade de Sementes', 14, 23);
+      if (!isContinuation) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9.5);
+        doc.text('Relatório Técnico de Controle de Qualidade de Sementes — Laudo de Emergência e Germinação', 14, 22);
 
-    // Data da emissão
-    doc.setFontSize(9);
-    doc.text(`Emissão: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, 196, 23, { align: 'right' });
+        // Data de emissão
+        doc.setFontSize(8.5);
+        const agora = new Date();
+        doc.text(
+          `Emissão: ${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, 
+          196, 
+          22, 
+          { align: 'right' }
+        );
+      }
+    };
 
-    // Section 1: Dados da Amostra
+    // Helper: controle de espaço e quebra de página dinâmica
+    let currentY = 36;
+    const ensureSpace = (neededHeight: number): void => {
+      if (currentY + neededHeight > 252) {
+        doc.addPage();
+        renderHeaderBanner(true);
+        currentY = 28;
+      }
+    };
+
+    // Página 1: Cabeçalho Inicial
+    renderHeaderBanner(false);
+
+    // --- SEÇÃO 1: DADOS DE IDENTIFICAÇÃO DA AMOSTRA E LOTE ---
     doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
-    doc.rect(14, 38, 182, 42, 'F');
+    doc.rect(14, currentY, 182, 38, 'F');
     doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.setLineWidth(0.5);
-    doc.rect(14, 38, 182, 42, 'D');
+    doc.setLineWidth(0.4);
+    doc.rect(14, currentY, 182, 38, 'D');
 
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('1. DADOS DE IDENTIFICAÇÃO DA AMOSTRA', 18, 45);
+    doc.setFontSize(11);
+    doc.text('1. DADOS DE IDENTIFICAÇÃO DO LOTE E AMOSTRA', 18, currentY + 6.5);
+
+    // Badge com Total de Testes
+    const totalTestesRealizados = testes.length;
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(138, currentY + 2.5, 54, 6.5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`TOTAL DE TESTES: ${totalTestesRealizados}`, 165, currentY + 6.8, { align: 'center' });
 
     doc.setTextColor(40, 40, 40);
-    doc.setFontSize(9.5);
-    
+    doc.setFontSize(9);
+
     // Coluna 1
-    doc.setFont('helvetica', 'bold'); doc.text('Protocolo:', 18, 52);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.protocolo, 38, 52);
+    doc.setFont('helvetica', 'bold'); doc.text('Protocolo:', 18, currentY + 14);
+    doc.setFont('helvetica', 'normal'); doc.text(amostra.protocolo, 40, currentY + 14);
 
-    doc.setFont('helvetica', 'bold'); doc.text('Cultura:', 18, 58);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.cultura, 38, 58);
+    doc.setFont('helvetica', 'bold'); doc.text('Cultura:', 18, currentY + 20);
+    doc.setFont('helvetica', 'normal'); doc.text(amostra.cultura, 40, currentY + 20);
 
-    doc.setFont('helvetica', 'bold'); doc.text('Cultivar:', 18, 64);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.cultivar, 38, 64);
+    doc.setFont('helvetica', 'bold'); doc.text('Cultivar:', 18, currentY + 26);
+    doc.setFont('helvetica', 'normal'); doc.text(amostra.cultivar, 40, currentY + 26);
 
-    doc.setFont('helvetica', 'bold'); doc.text('Nº Lote:', 18, 70);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.lote, 38, 70);
+    doc.setFont('helvetica', 'bold'); doc.text('Nº do Lote:', 18, currentY + 32);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text(amostra.lote, 40, currentY + 32);
+    doc.setTextColor(40, 40, 40);
 
     // Coluna 2
-    doc.setFont('helvetica', 'bold'); doc.text('Peneira:', 105, 52);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.peneira || 'N/A', 125, 52);
+    doc.setFont('helvetica', 'bold'); doc.text('Peneira:', 105, currentY + 14);
+    doc.setFont('helvetica', 'normal'); doc.text(amostra.peneira || 'N/A', 126, currentY + 14);
 
-    doc.setFont('helvetica', 'bold'); doc.text('Categoria:', 105, 58);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.categoria, 125, 58);
+    doc.setFont('helvetica', 'bold'); doc.text('Categoria:', 105, currentY + 20);
+    doc.setFont('helvetica', 'normal'); doc.text(amostra.categoria, 126, currentY + 20);
 
-    doc.setFont('helvetica', 'bold'); doc.text('Safra:', 105, 64);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.safra, 125, 64);
+    doc.setFont('helvetica', 'bold'); doc.text('Safra:', 105, currentY + 26);
+    doc.setFont('helvetica', 'normal'); doc.text(amostra.safra, 126, currentY + 26);
 
-    doc.setFont('helvetica', 'bold'); doc.text('Semeadura:', 105, 70);
-    doc.setFont('helvetica', 'normal'); doc.text(new Date(amostra.dataSemeadura + 'T00:00:00').toLocaleDateString('pt-BR'), 125, 70);
+    doc.setFont('helvetica', 'bold'); doc.text('Semeadura:', 105, currentY + 32);
+    const semeaduraFormatada = amostra.dataSemeadura ? formatDateBR(amostra.dataSemeadura) : '-';
+    doc.setFont('helvetica', 'normal'); doc.text(semeaduraFormatada, 126, currentY + 32);
 
-    // Section 2: Resultado da Avaliação
-    doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
-    doc.rect(14, 86, 182, 58, 'F');
-    doc.rect(14, 86, 182, 58, 'D');
+    currentY += 44;
 
+    // --- SEÇÃO 2: RESULTADOS DOS TESTES & FOTOS VINCULADAS ---
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('2. RESULTADO DA AVALIAÇÃO DE CANTEIRO', 18, 93);
+    doc.setFontSize(11);
+    doc.text('2. AVALIAÇÕES REALIZADAS E REGISTROS FOTOGRÁFICOS', 14, currentY);
+    currentY += 5;
 
-    if (avaliacao) {
-      // Tabela de contagens
-      const isApproved = avaliacao.resultadoAprovacao === 'Aprovado';
-      
-      // Stamp Aprovado / Reprovado
-      doc.setFillColor(isApproved ? 46 : 220, isApproved ? 125 : 53, isApproved ? 50 : 69);
-      doc.rect(150, 90, 42, 10, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text(avaliacao.resultadoAprovacao.toUpperCase(), 171, 96.5, { align: 'center' });
+    const extraFotosAnexo: { foto: FotoAmostra; testeNum: number }[] = [];
 
-      // Dados de Contagem
-      doc.setTextColor(40, 40, 40);
-      doc.setFontSize(9.5);
-
-      doc.setFont('helvetica', 'bold'); doc.text('Plântulas Fortes:', 18, 102);
-      doc.setFont('helvetica', 'normal'); doc.text(`${avaliacao.fortes}`, 68, 102);
-
-      doc.setFont('helvetica', 'bold'); doc.text('Plântulas Intermediárias:', 18, 107);
-      doc.setFont('helvetica', 'normal'); doc.text(`${avaliacao.intermediarias}`, 68, 107);
-
-      doc.setFont('helvetica', 'bold'); doc.text('Plântulas Fracas:', 18, 112);
-      doc.setFont('helvetica', 'normal'); doc.text(`${avaliacao.fracas}`, 68, 112);
-
-      doc.setFont('helvetica', 'bold'); doc.text('Plântulas Anormais:', 18, 117);
-      doc.setFont('helvetica', 'normal'); doc.text(`${avaliacao.anormais ?? 0}`, 68, 117);
-
-      doc.setFont('helvetica', 'bold'); doc.text('Plântulas Mortas:', 18, 122);
-      doc.setFont('helvetica', 'normal'); doc.text(`${avaliacao.mortas}`, 68, 122);
-
-      // Germinação e Índices Destaque
-      doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
-      doc.rect(105, 100, 87, 24, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
-      doc.text('GERMINAÇÃO FINAL (%):', 109, 106);
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${avaliacao.germinacao}%`, 109, 113);
-
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Anormais: ${avaliacao.percentualAnormais ?? avaliacao.anormais ?? 0}%  |  Mortas: ${avaliacao.percentualMortas}%`, 109, 120);
-
-      // Meta Info Avaliação
-      doc.setTextColor(80, 80, 80);
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Data Avaliação: ${new Date(avaliacao.dataAvaliacao + 'T00:00:00').toLocaleDateString('pt-BR')} às ${avaliacao.horaAvaliacao}`, 18, 131);
-      doc.text(`Avaliador Responsável: ${avaliacao.usuarioAvaliador}`, 18, 136);
-
-      if (avaliacao.observacoes) {
-        doc.text(`Obs: ${avaliacao.observacoes}`, 18, 141);
-      }
-    } else {
-      doc.setTextColor(150, 0, 0);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Esta amostra ainda encontra-se com status PENDENTE de avaliação.', 18, 110);
-    }
-
-    // Section 3: Registro Fotográfico
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    
-    const totalFotos = fotos ? fotos.length : 0;
-    doc.text(`3. REGISTRO FOTOGRÁFICO DO CANTEIRO ${totalFotos > 0 ? `(${totalFotos} Foto${totalFotos > 1 ? 's' : ''})` : ''}`, 18, 150);
-
-    if (totalFotos > 0) {
-      if (totalFotos === 1) {
-        // 1 foto centralizada e destacada
-        const foto = fotos[0];
-        try {
-          const imgFormat = foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-          doc.addImage(foto.foto, imgFormat, 55, 154, 100, 62);
-          doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-          doc.setLineWidth(0.4);
-          doc.rect(55, 154, 100, 62, 'D');
-
-          doc.setFontSize(8);
-          doc.setTextColor(50, 50, 50);
-          doc.setFont('helvetica', 'bold');
-          doc.text(foto.nome || 'Foto de Acompanhamento do Canteiro', 105, 221, { align: 'center' });
-          if (foto.dataUpload) {
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(7.5);
-            doc.setTextColor(100, 100, 100);
-            const dataStr = new Date(foto.dataUpload).toLocaleDateString('pt-BR');
-            const horaStr = new Date(foto.dataUpload).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            doc.text(`Registrado em: ${dataStr} às ${horaStr}`, 105, 226, { align: 'center' });
-          }
-        } catch (err) {
-          console.error('Erro ao renderizar foto única no PDF:', err);
-        }
-      } else {
-        // 2 fotos lado a lado na Página 1
-        const maxPage1 = Math.min(2, totalFotos);
-        for (let i = 0; i < maxPage1; i++) {
-          const foto = fotos[i];
-          const xPos = i === 0 ? 16 : 108;
-          try {
-            const imgFormat = foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-            doc.addImage(foto.foto, imgFormat, xPos, 154, 86, 56);
-            doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-            doc.setLineWidth(0.4);
-            doc.rect(xPos, 154, 86, 56, 'D');
-
-            doc.setFontSize(8);
-            doc.setTextColor(50, 50, 50);
-            doc.setFont('helvetica', 'bold');
-            const caption = foto.nome ? (foto.nome.length > 35 ? foto.nome.substring(0, 32) + '...' : foto.nome) : `Foto ${i + 1}`;
-            doc.text(caption, xPos + 43, 214, { align: 'center' });
-
-            if (foto.dataUpload) {
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(7);
-              doc.setTextColor(110, 110, 110);
-              const dataStr = new Date(foto.dataUpload).toLocaleDateString('pt-BR');
-              doc.text(`Data: ${dataStr}`, xPos + 43, 218.5, { align: 'center' });
-            }
-          } catch (err) {
-            console.error(`Erro ao renderizar foto ${i + 1} no PDF:`, err);
-          }
-        }
-
-        if (totalFotos > 2) {
-          doc.setFontSize(8);
-          doc.setTextColor(45, 106, 79);
-          doc.setFont('helvetica', 'bold');
-          doc.text(`* Veja o registro fotográfico completo (${totalFotos} fotos) no Anexo Fotográfico na Página 2`, 105, 230, { align: 'center' });
-        }
-      }
-    } else {
+    if (testes.length === 0) {
+      // Caso não haja testes
       doc.setFillColor(248, 249, 250);
-      doc.rect(14, 154, 182, 40, 'F');
+      doc.rect(14, currentY, 182, 35, 'F');
       doc.setDrawColor(220, 220, 220);
-      doc.rect(14, 154, 182, 40, 'D');
-      doc.setTextColor(120, 120, 120);
-      doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'italic');
-      doc.text('Nenhuma foto foi anexada a este canteiro até o momento.', 105, 175, { align: 'center' });
+      doc.rect(14, currentY, 182, 35, 'D');
+      doc.setTextColor(150, 0, 0);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Este lote ainda encontra-se com status PENDENTE de avaliação.', 105, currentY + 18, { align: 'center' });
+      currentY += 42;
+    } else {
+      // Itera por cada teste na sequência: Teste 1, Teste 2, Teste 3...
+      testes.forEach((teste, idx) => {
+        const numTeste = teste.testeNumero ?? (idx + 1);
+        const isApproved = (teste.resultado || teste.resultadoAprovacao) === 'Aprovado';
+        
+        // Fotos deste teste específico
+        const fotosDoTeste = allFotos.filter(f => (f.testeNumero ?? 1) === numTeste);
+        const fotoPrincipal = fotosDoTeste.length > 0 ? fotosDoTeste[0] : null;
+
+        if (fotosDoTeste.length > 1) {
+          fotosDoTeste.slice(1).forEach(ef => {
+            extraFotosAnexo.push({ foto: ef, testeNum: numTeste });
+          });
+        }
+
+        const blockHeight = 65;
+        ensureSpace(blockHeight);
+
+        // Bloco Container do Teste
+        doc.setFillColor(255, 255, 255);
+        doc.rect(14, currentY, 182, blockHeight, 'F');
+        doc.setDrawColor(210, 215, 212);
+        doc.setLineWidth(0.4);
+        doc.rect(14, currentY, 182, blockHeight, 'D');
+
+        // Faixa de Título do Teste
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(14, currentY, 182, 9, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(`TESTE ${numTeste}`, 18, currentY + 6.2);
+
+        // Stamp Aprovado / Reprovado
+        doc.setFillColor(isApproved ? 46 : 220, isApproved ? 125 : 53, isApproved ? 50 : 69);
+        doc.rect(42, currentY + 1.5, 30, 6, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text(
+          (teste.resultado || teste.resultadoAprovacao || 'CONCLUÍDO').toUpperCase(), 
+          57, 
+          currentY + 5.7, 
+          { align: 'center' }
+        );
+
+        // Info da Data / Avaliador no Header do Teste
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(230, 245, 235);
+        const dataTeste = teste.dataAvaliacao ? formatDateBR(teste.dataAvaliacao) : (teste.dataHora ? teste.dataHora.split('T')[0] : '-');
+        const horaTeste = teste.horaAvaliacao || '';
+        const avaliadorNome = teste.usuario || teste.usuarioAvaliador || amostra.responsavel;
+        doc.text(`Realizado em: ${dataTeste} ${horaTeste ? 'às ' + horaTeste : ''} | Avaliador: ${avaliadorNome}`, 192, currentY + 6, { align: 'right' });
+
+        // --- SUB-BLOCO ESQUERDO: RESULTADOS DO TESTE (X: 18 a 115) ---
+        const leftBoxY = currentY + 12;
+
+        // Cronograma do Teste
+        doc.setTextColor(60, 60, 60);
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'bold');
+        const dtInicio = teste.dataInicioTeste ? formatDateBR(teste.dataInicioTeste) : semeaduraFormatada;
+        const dt7d = teste.dataLeitura7Dias ? formatDateBR(teste.dataLeitura7Dias) : (amostra.dataLeitura7dias ? formatDateBR(amostra.dataLeitura7dias) : '-');
+        const dt10d = teste.dataLeitura10Dias ? formatDateBR(teste.dataLeitura10Dias) : (amostra.dataLeitura10dias ? formatDateBR(amostra.dataLeitura10dias) : '-');
+        doc.text(`Início: ${dtInicio}  |  7 Dias: ${dt7d}  |  10 Dias: ${dt10d}`, 18, leftBoxY);
+
+        // Grade de Contagens do Teste
+        doc.setFontSize(8);
+        doc.setTextColor(40, 40, 40);
+
+        doc.setFont('helvetica', 'bold'); doc.text('• Plântulas Fortes:', 18, leftBoxY + 7);
+        doc.setFont('helvetica', 'normal'); doc.text(`${teste.fortes}`, 68, leftBoxY + 7);
+
+        doc.setFont('helvetica', 'bold'); doc.text('• Plântulas Intermediárias:', 18, leftBoxY + 12);
+        doc.setFont('helvetica', 'normal'); doc.text(`${teste.intermediarias}`, 68, leftBoxY + 12);
+
+        doc.setFont('helvetica', 'bold'); doc.text('• Plântulas Fracas:', 18, leftBoxY + 17);
+        doc.setFont('helvetica', 'normal'); doc.text(`${teste.fracas}`, 68, leftBoxY + 17);
+
+        doc.setFont('helvetica', 'bold'); doc.text('• Plântulas Anormais:', 18, leftBoxY + 22);
+        doc.setFont('helvetica', 'normal'); doc.text(`${teste.anormais ?? 0}`, 68, leftBoxY + 22);
+
+        doc.setFont('helvetica', 'bold'); doc.text('• Plântulas Mortas:', 18, leftBoxY + 27);
+        doc.setFont('helvetica', 'normal'); doc.text(`${teste.mortas}`, 68, leftBoxY + 27);
+
+        // Caixa de Destaque Germinação Final %
+        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.rect(78, leftBoxY + 4, 38, 25, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'bold');
+        doc.text('GERMINAÇÃO:', 82, leftBoxY + 10);
+        doc.setFontSize(13);
+        doc.text(`${teste.germinacao}%`, 82, leftBoxY + 18);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Anorm: ${teste.percentualAnormais ?? teste.anormais ?? 0}% | Mort: ${teste.percentualMortas}%`, 82, leftBoxY + 25);
+
+        // Emergência aos 7 dias e Observações
+        const emerg7dVal = teste.plantulasEmergidas7dias !== undefined 
+          ? teste.plantulasEmergidas7dias 
+          : amostra.plantulasEmergidas7dias;
+        if (emerg7dVal !== undefined) {
+          doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`Emergência aos 7 dias: ${emerg7dVal}%`, 18, leftBoxY + 34);
+        }
+
+        if (teste.observacoes) {
+          doc.setTextColor(80, 80, 80);
+          doc.setFontSize(7);
+          doc.setFont('helvetica', 'italic');
+          const obsTrunk = teste.observacoes.length > 70 ? teste.observacoes.substring(0, 67) + '...' : teste.observacoes;
+          doc.text(`Obs: "${obsTrunk}"`, 18, leftBoxY + 40);
+        }
+
+        // --- SUB-BLOCO DIREITO: FOTO DO RESPECTIVO TESTE (X: 122 a 192) ---
+        const photoX = 122;
+        const photoY = currentY + 11.5;
+        const photoW = 70;
+        const photoH = 43;
+
+        if (fotoPrincipal && fotoPrincipal.foto) {
+          try {
+            const imgFormat = fotoPrincipal.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+            doc.addImage(fotoPrincipal.foto, imgFormat, photoX, photoY, photoW, photoH);
+            doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
+            doc.setLineWidth(0.4);
+            doc.rect(photoX, photoY, photoW, photoH, 'D');
+
+            // Legenda da Foto vinculada ao Teste
+            doc.setFillColor(255, 255, 255);
+            doc.rect(photoX, photoY + photoH - 6.5, photoW, 6.5, 'F');
+            doc.setFontSize(7);
+            doc.setTextColor(30, 30, 30);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Foto do Teste ${numTeste}`, photoX + (photoW / 2), photoY + photoH - 2, { align: 'center' });
+          } catch (err) {
+            console.error(`Erro ao adicionar foto do Teste ${numTeste} ao PDF:`, err);
+            doc.setFillColor(245, 245, 245);
+            doc.rect(photoX, photoY, photoW, photoH, 'F');
+            doc.setTextColor(140, 140, 140);
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'italic');
+            doc.text(`Foto do Teste ${numTeste}`, photoX + (photoW / 2), photoY + 22, { align: 'center' });
+          }
+        } else {
+          // Sem foto para este teste
+          doc.setFillColor(248, 249, 250);
+          doc.rect(photoX, photoY, photoW, photoH, 'F');
+          doc.setDrawColor(220, 220, 220);
+          doc.rect(photoX, photoY, photoW, photoH, 'D');
+          doc.setTextColor(140, 140, 140);
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'italic');
+          doc.text(`Nenhuma foto anexada`, photoX + (photoW / 2), photoY + 20, { align: 'center' });
+          doc.text(`ao Teste ${numTeste}`, photoX + (photoW / 2), photoY + 25, { align: 'center' });
+        }
+
+        currentY += blockHeight + 5;
+      });
     }
 
-    // Footer Signatures (Página 1)
+    // --- ASSINATURAS E RODAPÉ TÉCNICO ---
+    ensureSpace(34);
+    currentY = Math.max(currentY + 2, 252);
+
     doc.setDrawColor(180, 180, 180);
     doc.setLineWidth(0.3);
-    doc.line(20, 258, 90, 258);
-    doc.line(120, 258, 190, 258);
+    doc.line(20, currentY + 12, 90, currentY + 12);
+    doc.line(120, currentY + 12, 190, currentY + 12);
 
-    doc.setFontSize(8.5);
-    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(8);
+    doc.setTextColor(50, 50, 50);
     doc.setFont('helvetica', 'bold');
-    doc.text(avaliacao?.usuarioAvaliador || amostra.responsavel || 'Avaliador de Qualidade', 55, 263, { align: 'center' });
+    const respTecnico1 = testes[testes.length - 1]?.usuario || testes[testes.length - 1]?.usuarioAvaliador || amostra.responsavel || 'Avaliador CQ';
+    doc.text(respTecnico1, 55, currentY + 16, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Avaliador Técnico / Controle de Qualidade', 55, 267, { align: 'center' });
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(60, 60, 60);
-    doc.text('Responsável Técnico / Laboratório', 155, 263, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Supervisão e Controle de Qualidade CQ', 155, 267, { align: 'center' });
-
     doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Avaliador Técnico / Controle de Qualidade', 55, currentY + 20, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(50, 50, 50);
+    doc.text('Responsável Técnico / Laboratório', 155, currentY + 16, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Supervisão e Controle de Qualidade CQ', 155, currentY + 20, { align: 'center' });
+
+    doc.setFontSize(6.5);
     doc.setTextColor(150, 150, 150);
-    doc.text('Smart Canteiro CQ — Sistema Profissional de Controle de Qualidade de Sementes', 105, 285, { align: 'center' });
+    doc.text('Smart Canteiro CQ — Sistema Profissional de Controle de Qualidade de Sementes • Laudo Multitestes Integrado', 105, 287, { align: 'center' });
 
-    // --- PÁGINA 2: ANEXO FOTOGRÁFICO COMPLETO (SE HOUVER MAIS DE 2 FOTOS) ---
-    if (totalFotos > 2) {
+    // --- ANEXO FOTOGRÁFICO COMPLEMENTAR (SE HOUVER MAIS DE 1 FOTO POR TESTE) ---
+    if (extraFotosAnexo.length > 0) {
       doc.addPage();
+      renderHeaderBanner(true);
 
-      // Header Banner Anexo
-      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.rect(0, 0, 210, 28, 'F');
-
-      doc.setTextColor(255, 255, 255);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text('ANEXO FOTOGRÁFICO — REGISTRO DE CANTEIRO', 14, 14);
+      doc.setFontSize(12);
+      doc.text('ANEXO FOTOGRÁFICO COMPLEMENTAR DO LOTE', 14, 30);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.text(`Protocolo: ${amostra.protocolo}  |  Cultura: ${amostra.cultura} (${amostra.cultivar})  |  Lote: ${amostra.lote}  |  Safra: ${amostra.safra}`, 14, 21);
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Registros adicionais vinculados aos respectivos testes do lote ${amostra.lote}:`, 14, 35);
 
-      // Grid de Fotos no Anexo (2 colunas)
-      let currentY = 36;
-      for (let idx = 0; idx < fotos.length; idx++) {
-        const foto = fotos[idx];
+      let gridY = 40;
+      for (let idx = 0; idx < extraFotosAnexo.length; idx++) {
+        const item = extraFotosAnexo[idx];
         const isLeft = idx % 2 === 0;
         const xPos = isLeft ? 16 : 108;
 
         if (idx > 0 && isLeft) {
-          currentY += 76;
+          gridY += 76;
         }
 
-        // Se passar da altura da página, cria nova página
-        if (currentY + 68 > 275) {
+        if (gridY + 68 > 275) {
           doc.addPage();
-          currentY = 20;
+          renderHeaderBanner(true);
+          gridY = 30;
         }
 
         try {
-          const imgFormat = foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-          doc.addImage(foto.foto, imgFormat, xPos, currentY, 86, 56);
+          const imgFormat = item.foto.foto.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(item.foto.foto, imgFormat, xPos, gridY, 86, 56);
           doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
           doc.setLineWidth(0.4);
-          doc.rect(xPos, currentY, 86, 56, 'D');
+          doc.rect(xPos, gridY, 86, 56, 'D');
 
           doc.setFontSize(8);
           doc.setTextColor(40, 40, 40);
           doc.setFont('helvetica', 'bold');
-          doc.text(`Foto ${idx + 1}: ${foto.nome || 'Registro do Canteiro'}`, xPos, currentY + 61);
+          doc.text(`Foto Complementar — Teste ${item.testeNum}`, xPos, gridY + 61);
 
-          if (foto.dataUpload) {
+          if (item.foto.dataUpload) {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(7);
             doc.setTextColor(100, 100, 100);
-            const dataStr = new Date(foto.dataUpload).toLocaleDateString('pt-BR');
-            const horaStr = new Date(foto.dataUpload).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            doc.text(`Capturado em: ${dataStr} às ${horaStr}`, xPos, currentY + 65.5);
+            const dt = new Date(item.foto.dataUpload);
+            doc.text(`Capturada em: ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`, xPos, gridY + 65.5);
           }
         } catch (err) {
-          console.error(`Erro ao adicionar foto ${idx + 1} no anexo do PDF:`, err);
+          console.error(`Erro ao adicionar foto complementar no anexo:`, err);
         }
       }
-
-      // Rodapé da Página do Anexo
-      doc.setFontSize(7);
-      doc.setTextColor(150, 150, 150);
-      doc.text(`Smart Canteiro CQ — Anexo Fotográfico — Protocolo ${amostra.protocolo}`, 105, 287, { align: 'center' });
     }
 
-    doc.save(`Laudo_CQ_${amostra.protocolo}_${amostra.cultura}.pdf`);
+    doc.save(`Laudo_CQ_${amostra.lote}_${amostra.protocolo}.pdf`);
   }
 };

@@ -565,9 +565,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
                 e.preventDefault();
                 e.stopPropagation();
                 const fotos = storageService.getFotosByAmostra(amostra.id);
-                exportService.generateSamplePDF(amostra, existingAvaliacao, fotos);
+                exportService.generateSamplePDF(amostra, allTestes.length > 0 ? allTestes : existingAvaliacao, fotos);
               }}
               className="flex items-center gap-1.5 bg-gray-800 hover:bg-black text-white px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              title="Gerar Laudo Técnico Completo com todos os testes do lote"
             >
               <FileText className="w-4 h-4 text-rose-400" />
               <span>Laudo PDF</span>
@@ -1699,7 +1700,11 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
             <p className="text-xs text-gray-500">Tire fotos diretamente do celular ou selecione da galeria para comprovação do laudo.</p>
           </div>
 
-          <FotoManager amostraId={amostra.id} />
+          <FotoManager 
+            amostraId={amostra.id} 
+            testeNumero={activeTesteNumero || existingAvaliacao?.testeNumero || 1}
+            avaliacaoId={existingAvaliacao?.id}
+          />
         </div>
       )}
 

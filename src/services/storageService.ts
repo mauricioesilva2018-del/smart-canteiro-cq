@@ -128,8 +128,17 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     status: 'Concluído',
     qrCode: 'PRT-2026-001',
     dataCadastro: '2026-07-15T08:30:00Z',
-    dataAtualizacao: '2026-07-22T14:10:00Z',
+    dataAtualizacao: '2026-07-29T11:30:00Z',
     quantidadeSementes: 100,
+    totalTestes: 2,
+    testeAtualNumero: 2,
+    dataInicioTeste: '2026-07-15',
+    dataLeitura7Dias: '2026-07-22',
+    dataLeitura10Dias: '2026-07-25',
+    dataLeitura7dias: '2026-07-22',
+    dataLeitura10dias: '2026-07-25',
+    leitura7diasRealizada: true,
+    leitura10diasRealizada: true,
   },
   {
     id: 'ams-102',
@@ -227,6 +236,8 @@ const INITIAL_AVALIACOES: Avaliacao[] = [
   {
     id: 'avl-101',
     amostraId: 'ams-101',
+    loteId: 'L-2026-SOJ-881',
+    testeNumero: 1,
     fortes: 80,
     intermediarias: 7,
     fracas: 3,
@@ -236,10 +247,46 @@ const INITIAL_AVALIACOES: Avaliacao[] = [
     percentualAnormais: 2,
     percentualMortas: 8,
     resultadoAprovacao: 'Aprovado',
+    resultado: 'Aprovado',
+    statusTeste: 'concluido',
+    tipoTeste: 'Canteiro de Emergência / Germinação em Areia',
     observacoes: 'Vigor excelente nas plântulas fortes. Sistema radicular bem desenvolvido.',
     dataAvaliacao: '2026-07-22',
     horaAvaliacao: '14:10',
+    dataHora: '2026-07-22T14:10:00Z',
+    dataInicioTeste: '2026-07-15',
+    dataLeitura7Dias: '2026-07-22',
+    dataLeitura10Dias: '2026-07-25',
     usuarioAvaliador: 'Mariana Silva (Qualidade)',
+    usuario: 'Mariana Silva (Qualidade)',
+  },
+  {
+    id: 'avl-101-t2',
+    amostraId: 'ams-101',
+    loteId: 'L-2026-SOJ-881',
+    testeNumero: 2,
+    testeAnteriorId: 'avl-101',
+    fortes: 82,
+    intermediarias: 7,
+    fracas: 3,
+    anormais: 2,
+    mortas: 6,
+    germinacao: 92,
+    percentualAnormais: 2,
+    percentualMortas: 6,
+    resultadoAprovacao: 'Aprovado',
+    resultado: 'Aprovado',
+    statusTeste: 'concluido',
+    tipoTeste: 'Canteiro de Emergência / Reavaliação de Vigor',
+    observacoes: 'Segundo teste confirmou alta viabilidade e homogeneidade do lote.',
+    dataAvaliacao: '2026-07-29',
+    horaAvaliacao: '11:30',
+    dataHora: '2026-07-29T11:30:00Z',
+    dataInicioTeste: '2026-07-22',
+    dataLeitura7Dias: '2026-07-29',
+    dataLeitura10Dias: '2026-08-01',
+    usuarioAvaliador: 'Mariana Silva (Qualidade)',
+    usuario: 'Mariana Silva (Qualidade)',
   },
   {
     id: 'avl-102',
@@ -815,10 +862,36 @@ export const INITIAL_LOTES_QUALIDADE: LoteQualidade[] = [
   }
 ];
 
+// Fotos Iniciais Demonstrativas (vinculadas aos respectivos testes)
+export const INITIAL_FOTOS: FotoAmostra[] = [
+  {
+    id: 'ft-101-1',
+    amostraId: 'ams-101',
+    foto: generateSeedlingPlaceholder('Lote: L-2026-SOJ-881 — Teste 1', '#2d6a4f'),
+    dataUpload: '2026-07-22T14:12:00Z',
+    nome: 'Foto do Teste 1 - Emergência Inicial',
+    descricao: 'Registro fotográfico das plântulas no 7º dia do Teste 1',
+    syncStatus: 'sincronizado',
+    testeNumero: 1,
+    avaliacaoId: 'avl-101'
+  },
+  {
+    id: 'ft-101-2',
+    amostraId: 'ams-101',
+    foto: generateSeedlingPlaceholder('Lote: L-2026-SOJ-881 — Teste 2', '#1b4332'),
+    dataUpload: '2026-07-29T11:35:00Z',
+    nome: 'Foto do Teste 2 - Reavaliação de Vigor',
+    descricao: 'Registro fotográfico das plântulas do Teste 2 para confirmação de lote',
+    syncStatus: 'sincronizado',
+    testeNumero: 2,
+    avaliacaoId: 'avl-101-t2'
+  }
+];
+
 class StorageService {
-  private amostras: Amostra[] = [];
-  private avaliacoes: Avaliacao[] = [];
-  private fotos: FotoAmostra[] = [];
+  private amostras: Amostra[] = [...INITIAL_AMOSTRAS];
+  private avaliacoes: Avaliacao[] = [...INITIAL_AVALIACOES];
+  private fotos: FotoAmostra[] = [...INITIAL_FOTOS];
   private configuracoes: ConfiguracaoAprovacao[] = DEFAULT_CONFIGS;
   private usuarios: Usuario[] = [];
 
@@ -902,22 +975,55 @@ class StorageService {
       const localAmostras = await indexedDbService.getAllAmostrasLocal();
       if (localAmostras && localAmostras.length > 0) {
         // Se a memória está vazia ou os dados locais são mais recentes, hidrata a memória
-        if (this.amostras.length === 0 || this.isQuotaExceeded) {
-          this.amostras = localAmostras;
+        this.amostras = localAmostras;
+        // Garante que se ams-101 estiver no cache mas não tiver o teste 2 configurado, sincroniza
+        const ams101 = this.amostras.find(a => a.id === 'ams-101');
+        if (ams101 && (ams101.totalTestes || 0) < 2) {
+          ams101.totalTestes = 2;
+          ams101.testeAtualNumero = 2;
+        }
+      } else {
+        this.amostras = [...INITIAL_AMOSTRAS];
+        for (const a of INITIAL_AMOSTRAS) {
+          await indexedDbService.saveAmostraLocal(a);
         }
       }
+
       const localAvaliacoes = await indexedDbService.getAllAvaliacoesLocal();
       if (localAvaliacoes && localAvaliacoes.length > 0) {
-        if (this.avaliacoes.length === 0 || this.isQuotaExceeded) {
-          this.avaliacoes = localAvaliacoes;
+        this.avaliacoes = localAvaliacoes;
+        // Se faltar o Teste 2 demonstrativo para ams-101, adiciona-o ao histórico
+        if (!this.avaliacoes.some(a => a.id === 'avl-101-t2')) {
+          const t2 = INITIAL_AVALIACOES.find(a => a.id === 'avl-101-t2');
+          if (t2) {
+            this.avaliacoes.push(t2);
+            await indexedDbService.saveAvaliacaoLocal(t2);
+          }
+        }
+      } else {
+        this.avaliacoes = [...INITIAL_AVALIACOES];
+        for (const av of INITIAL_AVALIACOES) {
+          await indexedDbService.saveAvaliacaoLocal(av);
         }
       }
+
       const localFotos = await indexedDbService.getAllFotosLocal();
       if (localFotos && localFotos.length > 0) {
-        if (this.fotos.length === 0 || this.isQuotaExceeded) {
-          this.fotos = localFotos;
+        this.fotos = localFotos;
+        // Se faltar as fotos demonstrativas para os 2 testes de ams-101, inclui
+        for (const initF of INITIAL_FOTOS) {
+          if (!this.fotos.some(f => f.id === initF.id)) {
+            this.fotos.push(initF);
+            await indexedDbService.saveFotoLocal(initF);
+          }
+        }
+      } else {
+        this.fotos = [...INITIAL_FOTOS];
+        for (const f of INITIAL_FOTOS) {
+          await indexedDbService.saveFotoLocal(f);
         }
       }
+
       const pendingItems = await indexedDbService.getPendingSyncItems();
       this.pendingSyncCount = pendingItems.length;
       console.log(`[Smart Canteiro CQ] Cache local carregado do IndexedDB: ${this.amostras.length} amostras, ${this.avaliacoes.length} avaliações, ${this.fotos.length} fotos.`);
@@ -1894,7 +2000,7 @@ class StorageService {
     return this.fotos;
   }
 
-  getFotosByAmostra(amostraId: string): FotoAmostra[] {
+  getFotosByAmostra(amostraId: string, testeNumero?: number): FotoAmostra[] {
     if (!amostraId) return [];
     const amostra = this.getAmostraById(amostraId);
     const targetIds = new Set<string>();
@@ -1902,20 +2008,35 @@ class StorageService {
     if (amostra?.id) targetIds.add(amostra.id);
     if (amostra?.protocolo) targetIds.add(amostra.protocolo);
 
-    return this.fotos.filter(f => targetIds.has(f.amostraId));
+    const list = this.fotos.filter(f => targetIds.has(f.amostraId));
+    if (testeNumero !== undefined) {
+      // Retorna fotos deste teste específico (fotos legadas sem testeNumero pertencem ao Teste 1)
+      return list.filter(f => (f.testeNumero ?? 1) === testeNumero);
+    }
+    return list;
   }
 
-  async addFoto(amostraId: string, fotoBase64: string, nome?: string, descricao?: string): Promise<FotoAmostra> {
+  async addFoto(
+    amostraId: string, 
+    fotoBase64: string, 
+    nome?: string, 
+    descricao?: string, 
+    testeNumero?: number, 
+    avaliacaoId?: string
+  ): Promise<FotoAmostra> {
     const id = 'ft-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     const now = new Date().toISOString();
+    const resolvedTesteNumero = testeNumero || 1;
     const newFoto: FotoAmostra = {
       id,
       amostraId,
       foto: fotoBase64,
       dataUpload: now,
-      nome: nome || `Foto Canteiro - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      nome: nome || `Foto Teste ${resolvedTesteNumero} - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
       descricao: descricao || '',
       syncStatus: 'pendente',
+      testeNumero: resolvedTesteNumero,
+      ...(avaliacaoId ? { avaliacaoId } : {}),
     };
 
     // 1. Salva IMEDIATAMENTE no IndexedDB local antes de qualquer tentativa remota
@@ -1926,7 +2047,7 @@ class StorageService {
       id: 'sync-foto-' + id,
       entidadeId: id,
       tipo: 'FOTO_ADD',
-      titulo: `Foto: ${nome || 'Canteiro'}`,
+      titulo: `Foto Teste ${resolvedTesteNumero}: ${nome || 'Canteiro'}`,
       payload: newFoto,
       dataCriacao: now,
       status: 'pendente',
@@ -1949,6 +2070,16 @@ class StorageService {
     }
 
     return newFoto;
+  }
+
+  async updateFotoTeste(fotoId: string, testeNumero: number, avaliacaoId?: string): Promise<boolean> {
+    const foto = this.fotos.find(f => f.id === fotoId);
+    if (!foto) return false;
+    foto.testeNumero = testeNumero;
+    if (avaliacaoId) foto.avaliacaoId = avaliacaoId;
+    await indexedDbService.saveFotoLocal(foto);
+    this.notify();
+    return true;
   }
 
   async deleteFoto(id: string): Promise<boolean> {
