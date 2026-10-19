@@ -68,6 +68,7 @@ export const DEFAULT_USERS: Usuario[] = [
 
 // Gerador de foto placeholder de canteiro
 const generateSeedlingPlaceholder = (title: string, color: string = '#2d6a4f') => {
+  if (typeof document === 'undefined') return 'data:image/jpeg;base64,placeholder';
   const canvas = document.createElement('canvas');
   canvas.width = 400;
   canvas.height = 300;
@@ -130,6 +131,7 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     dataCadastro: '2026-07-15T08:30:00Z',
     dataAtualizacao: '2026-07-29T11:30:00Z',
     quantidadeSementes: 100,
+    tsiMatriz: 'Seedcorp / TSI Padrão',
     totalTestes: 2,
     testeAtualNumero: 2,
     dataInicioTeste: '2026-07-15',
@@ -157,6 +159,7 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     dataCadastro: '2026-07-18T09:00:00Z',
     dataAtualizacao: '2026-07-25T10:15:00Z',
     quantidadeSementes: 100,
+    tsiMatriz: 'TSI Fungicida + Inseticida',
   },
   {
     id: 'ams-103',
@@ -175,6 +178,7 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     dataCadastro: '2026-07-21T11:20:00Z',
     dataAtualizacao: '2026-07-21T11:20:00Z',
     quantidadeSementes: 100,
+    tsiMatriz: 'Seedcorp / Matriz Areia',
   },
   {
     id: 'ams-104',
@@ -193,6 +197,7 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     dataCadastro: '2026-07-22T14:00:00Z',
     dataAtualizacao: '2026-07-22T14:00:00Z',
     quantidadeSementes: 100,
+    tsiMatriz: 'TSI Fortenza Duo',
   },
   {
     id: 'ams-105',
@@ -211,6 +216,7 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     dataCadastro: '2026-07-10T10:00:00Z',
     dataAtualizacao: '2026-07-17T16:00:00Z',
     quantidadeSementes: 100,
+    tsiMatriz: 'Seedcorp / Deslintada Quimicamente',
   },
   {
     id: 'ams-106',
@@ -229,6 +235,84 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     dataCadastro: '2026-07-24T09:15:00Z',
     dataAtualizacao: '2026-07-24T09:15:00Z',
     quantidadeSementes: 100,
+    tsiMatriz: 'TSI Maxim Advanced',
+  },
+  // Lotes específicos para validação das regras de cores condicionais
+  {
+    id: 'ams-107',
+    protocolo: 'PRT-2026-007',
+    cultura: 'Soja',
+    cultivar: 'TMG 7062 IPRO',
+    lote: 'L-2026-TEST-849',
+    peneira: '6.5',
+    categoria: 'C1',
+    safra: '2025/2026',
+    dataSemeadura: '2026-07-25',
+    responsavel: 'Mariana Silva (Qualidade)',
+    observacoes: 'Teste de validação: Germinação 84,9% (Regra: < 85% -> Vermelho)',
+    status: 'Concluído',
+    qrCode: 'PRT-2026-007',
+    dataCadastro: '2026-07-25T08:00:00Z',
+    dataAtualizacao: '2026-07-25T14:00:00Z',
+    quantidadeSementes: 100,
+    tsiMatriz: 'Seedcorp / TSI Fortenza Duo (84,9% Vermelho)',
+  },
+  {
+    id: 'ams-108',
+    protocolo: 'PRT-2026-008',
+    cultura: 'Milho',
+    cultivar: 'DKB 290 PRO4',
+    lote: 'L-2026-TEST-850',
+    peneira: 'R2L',
+    categoria: 'S1',
+    safra: '2025/2026',
+    dataSemeadura: '2026-07-26',
+    responsavel: 'João Pedro (Campo)',
+    observacoes: 'Teste de validação: Germinação exatamente 85,0% (Regra: 85% a 90% -> Amarelo)',
+    status: 'Concluído',
+    qrCode: 'PRT-2026-008',
+    dataCadastro: '2026-07-26T08:30:00Z',
+    dataAtualizacao: '2026-07-26T15:00:00Z',
+    quantidadeSementes: 100,
+    tsiMatriz: 'TSI Maxim Quattro (85% Amarelo)',
+  },
+  {
+    id: 'ams-109',
+    protocolo: 'PRT-2026-009',
+    cultura: 'Soja',
+    cultivar: 'DM 56I59 RSF',
+    lote: 'L-2026-TEST-900',
+    peneira: '6.0',
+    categoria: 'C2',
+    safra: '2025/2026',
+    dataSemeadura: '2026-07-27',
+    responsavel: 'Mariana Silva (Qualidade)',
+    observacoes: 'Teste de validação: Germinação exatamente 90,0% (Regra: 85% a 90% -> Amarelo)',
+    status: 'Concluído',
+    qrCode: 'PRT-2026-009',
+    dataCadastro: '2026-07-27T09:00:00Z',
+    dataAtualizacao: '2026-07-27T16:00:00Z',
+    quantidadeSementes: 100,
+    tsiMatriz: 'Seedcorp / TSI Standard (90% Amarelo)',
+  },
+  {
+    id: 'ams-110',
+    protocolo: 'PRT-2026-010',
+    cultura: 'Algodão',
+    cultivar: 'TMG 81WS',
+    lote: 'L-2026-TEST-901',
+    peneira: '5.0',
+    categoria: 'Básica',
+    safra: '2025/2026',
+    dataSemeadura: '2026-07-28',
+    responsavel: 'Carlos Eduardo (Admin)',
+    observacoes: 'Teste de validação: Germinação 90,1% (Regra: > 90% -> Verde)',
+    status: 'Concluído',
+    qrCode: 'PRT-2026-010',
+    dataCadastro: '2026-07-28T10:00:00Z',
+    dataAtualizacao: '2026-07-28T17:00:00Z',
+    quantidadeSementes: 100,
+    tsiMatriz: 'Matriz TSI Químico + Biológico (90,1% Verde)',
   }
 ];
 
@@ -321,6 +405,103 @@ const INITIAL_AVALIACOES: Avaliacao[] = [
     dataAvaliacao: '2026-07-17',
     horaAvaliacao: '16:00',
     usuarioAvaliador: 'Mariana Silva (Qualidade)',
+  },
+  // Avaliações de Validação das Regras de Cores Condicionais
+  {
+    id: 'avl-107',
+    amostraId: 'ams-107',
+    loteId: 'L-2026-TEST-849',
+    testeNumero: 1,
+    fortes: 70,
+    intermediarias: 10,
+    fracas: 4.9,
+    anormais: 5,
+    mortas: 10.1,
+    germinacao: 84.9,
+    percentualAnormais: 5,
+    percentualMortas: 10.1,
+    resultadoAprovacao: 'Reprovado',
+    resultado: 'Reprovado',
+    statusTeste: 'concluido',
+    tipoTeste: 'Canteiro de Emergência',
+    observacoes: 'Teste de Validação: 84,9% (< 85% -> Vermelho)',
+    dataAvaliacao: '2026-07-25',
+    horaAvaliacao: '14:00',
+    dataHora: '2026-07-25T14:00:00Z',
+    usuarioAvaliador: 'Mariana Silva (Qualidade)',
+    usuario: 'Mariana Silva (Qualidade)',
+  },
+  {
+    id: 'avl-108',
+    amostraId: 'ams-108',
+    loteId: 'L-2026-TEST-850',
+    testeNumero: 1,
+    fortes: 75,
+    intermediarias: 6,
+    fracas: 4,
+    anormais: 4,
+    mortas: 11,
+    germinacao: 85,
+    percentualAnormais: 4,
+    percentualMortas: 11,
+    resultadoAprovacao: 'Aprovado',
+    resultado: 'Aprovado',
+    statusTeste: 'concluido',
+    tipoTeste: 'Canteiro de Emergência',
+    observacoes: 'Teste de Validação: 85,0% (85% a 90% -> Amarelo)',
+    dataAvaliacao: '2026-07-26',
+    horaAvaliacao: '15:00',
+    dataHora: '2026-07-26T15:00:00Z',
+    usuarioAvaliador: 'João Pedro (Campo)',
+    usuario: 'João Pedro (Campo)',
+  },
+  {
+    id: 'avl-109',
+    amostraId: 'ams-109',
+    loteId: 'L-2026-TEST-900',
+    testeNumero: 1,
+    fortes: 80,
+    intermediarias: 6,
+    fracas: 4,
+    anormais: 3,
+    mortas: 7,
+    germinacao: 90,
+    percentualAnormais: 3,
+    percentualMortas: 7,
+    resultadoAprovacao: 'Aprovado',
+    resultado: 'Aprovado',
+    statusTeste: 'concluido',
+    tipoTeste: 'Canteiro de Emergência',
+    observacoes: 'Teste de Validação: 90,0% (85% a 90% -> Amarelo)',
+    dataAvaliacao: '2026-07-27',
+    horaAvaliacao: '16:00',
+    dataHora: '2026-07-27T16:00:00Z',
+    usuarioAvaliador: 'Mariana Silva (Qualidade)',
+    usuario: 'Mariana Silva (Qualidade)',
+  },
+  {
+    id: 'avl-110',
+    amostraId: 'ams-110',
+    loteId: 'L-2026-TEST-901',
+    testeNumero: 1,
+    fortes: 83,
+    intermediarias: 5,
+    fracas: 2.1,
+    anormais: 3,
+    mortas: 6.9,
+    germinacao: 90.1,
+    percentualAnormais: 3,
+    percentualMortas: 6.9,
+    resultadoAprovacao: 'Aprovado',
+    resultado: 'Aprovado',
+    statusTeste: 'concluido',
+    tipoTeste: 'Canteiro de Emergência',
+    observacoes: 'Teste de Validação: 90,1% (> 90% -> Verde)',
+    dataAvaliacao: '2026-07-28',
+    horaAvaliacao: '17:00',
+    dataHora: '2026-07-28T17:00:00Z',
+    usuarioAvaliador: 'Carlos Eduardo (Admin)',
+    usuario: 'Carlos Eduardo (Admin)',
   }
 ];
 
@@ -415,6 +596,7 @@ export const DEFAULT_PARAMETROS_CULTURA: ParametroQualidadeCultura[] = [
 
 // Documento demonstrativo de certificado (PNG placeholder em base64)
 const generateCertificatePlaceholder = (numeroCert: string, lote: string, cultura: string) => {
+  if (typeof document === 'undefined') return 'data:image/png;base64,placeholder';
   const canvas = document.createElement('canvas');
   canvas.width = 600;
   canvas.height = 800;
@@ -976,11 +1158,27 @@ class StorageService {
       if (localAmostras && localAmostras.length > 0) {
         // Se a memória está vazia ou os dados locais são mais recentes, hidrata a memória
         this.amostras = localAmostras;
+        
         // Garante que se ams-101 estiver no cache mas não tiver o teste 2 configurado, sincroniza
         const ams101 = this.amostras.find(a => a.id === 'ams-101');
         if (ams101 && (ams101.totalTestes || 0) < 2) {
           ams101.totalTestes = 2;
           ams101.testeAtualNumero = 2;
+        }
+
+        // Garante que o campo tsiMatriz inicial esteja presente nos lotes demonstrativos
+        for (const initA of INITIAL_AMOSTRAS) {
+          const found = this.amostras.find(a => a.id === initA.id);
+          if (found) {
+            if (!found.tsiMatriz && initA.tsiMatriz) {
+              found.tsiMatriz = initA.tsiMatriz;
+              await indexedDbService.saveAmostraLocal(found);
+            }
+          } else {
+            // Lote novo demonstrativo (ex: ams-107 a ams-110 de teste)
+            this.amostras.push(initA);
+            await indexedDbService.saveAmostraLocal(initA);
+          }
         }
       } else {
         this.amostras = [...INITIAL_AMOSTRAS];
@@ -992,12 +1190,12 @@ class StorageService {
       const localAvaliacoes = await indexedDbService.getAllAvaliacoesLocal();
       if (localAvaliacoes && localAvaliacoes.length > 0) {
         this.avaliacoes = localAvaliacoes;
-        // Se faltar o Teste 2 demonstrativo para ams-101, adiciona-o ao histórico
-        if (!this.avaliacoes.some(a => a.id === 'avl-101-t2')) {
-          const t2 = INITIAL_AVALIACOES.find(a => a.id === 'avl-101-t2');
-          if (t2) {
-            this.avaliacoes.push(t2);
-            await indexedDbService.saveAvaliacaoLocal(t2);
+        
+        // Sincroniza avaliações demonstrativas (incluindo ams-101-t2 e lotes de validação de cores)
+        for (const initAv of INITIAL_AVALIACOES) {
+          if (!this.avaliacoes.some(a => a.id === initAv.id)) {
+            this.avaliacoes.push(initAv);
+            await indexedDbService.saveAvaliacaoLocal(initAv);
           }
         }
       } else {

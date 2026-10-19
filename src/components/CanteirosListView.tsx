@@ -414,7 +414,10 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
                         <td className="py-3.5 px-3 font-semibold text-gray-800">
                           {amostra.lote}
-                          <span className="block text-[10px] text-gray-400 font-normal">Pen: {amostra.peneira} • {amostra.categoria}</span>
+                          <span className="block text-[10px] text-gray-400 font-normal">
+                            Pen: {amostra.peneira} • {amostra.categoria}
+                            {amostra.tsiMatriz ? ` • TSI: ${amostra.tsiMatriz}` : ''}
+                          </span>
                         </td>
 
                         <td className="py-3.5 px-2 font-medium">{amostra.safra}</td>
@@ -594,6 +597,11 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                       <div><span className="font-semibold text-gray-800">Safra:</span> {amostra.safra}</div>
                       <div><span className="font-semibold text-gray-800">Lançamento:</span> {formatDateBR(amostra.dataSemeadura)}</div>
                       <div><span className="font-semibold text-gray-800">Peneira:</span> {amostra.peneira}</div>
+                      {amostra.tsiMatriz && (
+                        <div className="col-span-2 text-[11px] text-[#1b4332] bg-emerald-50 px-2 py-1 rounded-md font-semibold border border-emerald-200">
+                          <span className="font-bold">Matriz / TSI:</span> {amostra.tsiMatriz}
+                        </div>
+                      )}
                       <div><span className="font-semibold text-[#1b4332]">Leitura 7d:</span> {formatDateBR(leituraInfo.data7d)}</div>
                       <div><span className="font-semibold text-[#1b4332]">Leitura 10d:</span> {formatDateBR(leituraInfo.data10d)}</div>
                     </div>

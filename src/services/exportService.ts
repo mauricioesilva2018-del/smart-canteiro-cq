@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Amostra, Avaliacao, FotoAmostra } from '../types';
@@ -6,13 +6,20 @@ import { storageService } from './storageService';
 import { formatDateBR } from '../utils/dateUtils';
 
 export const exportService = {
-  // --- EXCEL EXPORT (MULTI-TESTES POR LOTE) ---
+  // --- EXCEL EXPORT (MULTI-TESTES POR LOTE COM MATRIZ / TSI E FORMATAÇÃO CONDICIONAL) ---
   exportToExcel(amostras: Amostra[], fileName: string = 'Relatorio_Controle_Qualidade_Sementes') {
     const dataRows: any[] = [];
 
     amostras.forEach(amostra => {
       // Busca todos os testes cadastrados para este lote/amostra
       const testes = storageService.getAvaliacoesByAmostraId(amostra.id);
+
+      // Obtém o valor do campo Matriz / TSI registrado na amostra
+      const matrizTsi = amostra.tsiMatriz?.trim() || 
+        (amostra as any).matrizTsi?.trim() || 
+        (amostra as any).matriz?.trim() || 
+        (amostra as any).tsi?.trim() || 
+        '';
 
       if (testes.length === 0) {
         // Amostra cadastrada ainda sem avaliações
@@ -27,6 +34,7 @@ export const exportService = {
           'Peneira': amostra.peneira || 'N/A',
           'Categoria': amostra.categoria,
           'Safra': amostra.safra,
+          'Matriz / TSI': matrizTsi,
           'Data Lançamento / Semeadura': amostra.dataSemeadura,
           'Início do Teste': amostra.dataInicioTeste || amostra.dataSemeadura,
           'Prev. Leitura 7d': amostra.dataLeitura7Dias || amostra.dataLeitura7dias || '-',
@@ -61,6 +69,11 @@ export const exportService = {
           const dataTesteFormatada = teste.dataAvaliacao || (dataHoraTeste ? dataHoraTeste.split('T')[0] : '-');
           const horaTesteFormatada = teste.horaAvaliacao || (dataHoraTeste && dataHoraTeste.includes('T') ? dataHoraTeste.split('T')[1].substring(0, 5) : '-');
 
+          // Formatação percentual precisa para Germinação Final
+          const germVal = teste.germinacao !== undefined && teste.germinacao !== null 
+            ? `${String(teste.germinacao).replace('.', ',')}%` 
+            : '-';
+
           dataRows.push({
             'Identificação do Teste': `Teste ${numTeste}`,
             'Nº Teste': numTeste,
@@ -71,6 +84,7 @@ export const exportService = {
             'Peneira': amostra.peneira || 'N/A',
             'Categoria': amostra.categoria,
             'Safra': amostra.safra,
+            'Matriz / TSI': matrizTsi,
             'Data Lançamento / Semeadura': amostra.dataSemeadura,
             'Início do Teste': teste.dataInicioTeste || amostra.dataInicioTeste || amostra.dataSemeadura,
             'Prev. Leitura 7d': teste.dataLeitura7Dias || amostra.dataLeitura7Dias || amostra.dataLeitura7dias || '-',
@@ -81,7 +95,7 @@ export const exportService = {
             'Fracas (10d)': teste.fracas ?? 0,
             'Anormais (10d)': teste.anormais ?? 0,
             'Mortas (10d)': teste.mortas ?? 0,
-            'Germinação Final (%)': `${teste.germinacao ?? 0}%`,
+            'Germinação Final (%)': germVal,
             'Anormais (%)': `${teste.percentualAnormais ?? teste.anormais ?? 0}%`,
             'Mortas (%)': `${teste.percentualMortas ?? 0}%`,
             'Resultado CQ': teste.resultado || teste.resultadoAprovacao || 'Pendente',
@@ -99,11 +113,185 @@ export const exportService = {
 
     const worksheet = XLSX.utils.json_to_sheet(dataRows);
     
-    // Auto-width columns
-    const max_widths = Object.keys(dataRows[0] || {}).map(key => ({
-      wch: Math.max(key.length + 3, 15)
-    }));
+    // Identificação de colunas e limites do intervalo
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:A1');
+    let germColIndex = -1;
+
+    // Localiza a coluna 'Germinação Final (%)'
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c });
+      const cell = worksheet[headerAddress];
+      if (cell && (cell.v === 'Germinação Final (%)' || String(cell.v).includes('Germinação Final'))) {
+        germColIndex = c;
+        break;
+      }
+    }
+
+    // 1. Estilização dos Cabeçalhos (Verde Escuro Institucional, Texto Branco, Negrito, Centralizado)
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c });
+      const cell = worksheet[headerAddress];
+      if (cell) {
+        cell.s = {
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: '1B4332' } // Verde Escuro
+          },
+          font: {
+            name: 'Calibri',
+            sz: 11,
+            bold: true,
+            color: { rgb: 'FFFFFF' }
+          },
+          alignment: {
+            horizontal: 'center',
+            vertical: 'center',
+            wrapText: false
+          },
+          border: {
+            top: { style: 'thin', color: { rgb: 'D1D5DB' } },
+            bottom: { style: 'medium', color: { rgb: '0F281E' } },
+            left: { style: 'thin', color: { rgb: 'D1D5DB' } },
+            right: { style: 'thin', color: { rgb: 'D1D5DB' } }
+          }
+        };
+      }
+    }
+
+    // 2. Estilização e Formatação Condicional de todas as linhas de dados
+    for (let r = range.s.r + 1; r <= range.e.r; r++) {
+      // Estilo base para todas as células da linha
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellAddress = XLSX.utils.encode_cell({ r, c });
+        const cell = worksheet[cellAddress];
+        if (cell) {
+          const isNumeric = typeof cell.v === 'number';
+          const isCenterCol = isNumeric || (typeof cell.v === 'string' && (cell.v.includes('%') || /^\d{4}-\d{2}-\d{2}/.test(cell.v) || cell.v === '-'));
+
+          cell.s = {
+            font: {
+              name: 'Calibri',
+              sz: 10,
+              color: { rgb: '1F2937' }
+            },
+            alignment: {
+              horizontal: isCenterCol ? 'center' : 'left',
+              vertical: 'center'
+            },
+            border: {
+              top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+              bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+              left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+              right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+            }
+          };
+        }
+      }
+
+      // 3. Formatação Condicional por Cores na Coluna 'Germinação Final (%)'
+      // - Vermelho: resultados abaixo de 85% (< 85%) (ex: 84,9% = vermelho)
+      // - Amarelo: resultados iguais ou superiores a 85% e iguais ou inferiores a 90% (85% <= x <= 90%) (ex: 85% = amarelo, 90% = amarelo)
+      // - Verde: resultados acima de 90% (> 90%) (ex: 90,1% = verde)
+      if (germColIndex !== -1) {
+        const germCellAddress = XLSX.utils.encode_cell({ r, c: germColIndex });
+        const germCell = worksheet[germCellAddress];
+
+        if (germCell && germCell.v !== undefined && germCell.v !== null) {
+          let valNum: number | null = null;
+
+          if (typeof germCell.v === 'number') {
+            // Se for número decimal (ex: 0.85 ou 0.849), converte para percentual 85 ou 84.9
+            valNum = germCell.v <= 1 && germCell.v > 0 
+              ? Number((germCell.v * 100).toFixed(2)) 
+              : Number(germCell.v.toFixed(2));
+          } else if (typeof germCell.v === 'string') {
+            const cleanStr = germCell.v.replace('%', '').replace(',', '.').trim();
+            const parsed = parseFloat(cleanStr);
+            if (!isNaN(parsed)) {
+              valNum = Number(parsed.toFixed(2));
+            }
+          }
+
+          if (valNum !== null) {
+            let fgRgb = '';
+            let fontRgb = '';
+
+            if (valNum < 85) {
+              // Vermelho (Light Red Fill #FFC7CE com texto escuro #9C0006)
+              fgRgb = 'FFC7CE';
+              fontRgb = '9C0006';
+            } else if (valNum <= 90) {
+              // Amarelo (Light Yellow Fill #FFEB9C com texto escuro #9C6500)
+              fgRgb = 'FFEB9C';
+              fontRgb = '9C6500';
+            } else {
+              // Verde (Light Green Fill #C6EFCE com texto escuro #006100)
+              fgRgb = 'C6EFCE';
+              fontRgb = '006100';
+            }
+
+            germCell.s = {
+              fill: {
+                patternType: 'solid',
+                fgColor: { rgb: fgRgb }
+              },
+              font: {
+                name: 'Calibri',
+                sz: 11,
+                bold: true,
+                color: { rgb: fontRgb }
+              },
+              alignment: {
+                horizontal: 'center',
+                vertical: 'center'
+              },
+              border: {
+                top: { style: 'thin', color: { rgb: 'B0B0B0' } },
+                bottom: { style: 'thin', color: { rgb: 'B0B0B0' } },
+                left: { style: 'thin', color: { rgb: 'B0B0B0' } },
+                right: { style: 'thin', color: { rgb: 'B0B0B0' } }
+              }
+            };
+          } else {
+            // Sem avaliação numérica (ex: '-')
+            germCell.s = {
+              fill: {
+                patternType: 'solid',
+                fgColor: { rgb: 'F3F4F6' }
+              },
+              font: {
+                name: 'Calibri',
+                sz: 10,
+                italic: true,
+                color: { rgb: '6B7280' }
+              },
+              alignment: {
+                horizontal: 'center',
+                vertical: 'center'
+              },
+              border: {
+                top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+              }
+            };
+          }
+        }
+      }
+    }
+
+    // Ajuste de largura das colunas
+    const max_widths = Object.keys(dataRows[0] || {}).map(key => {
+      let maxLen = key.length;
+      dataRows.forEach(row => {
+        const val = row[key] !== undefined && row[key] !== null ? String(row[key]) : '';
+        if (val.length > maxLen) maxLen = val.length;
+      });
+      return { wch: Math.min(Math.max(maxLen + 3, 14), 45) };
+    });
     worksheet['!cols'] = max_widths;
+    worksheet['!rows'] = [{ hpt: 26 }]; // Altura do cabeçalho
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Relatório CQ Canteiros');
