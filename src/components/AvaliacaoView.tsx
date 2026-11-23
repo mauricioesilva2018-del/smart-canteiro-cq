@@ -653,12 +653,12 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
       <div id="card-identificacao-canteiro" className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xl font-black text-gray-900">{amostra.protocolo}</span>
               <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
                 amostra.status === 'Concluído' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
               }`}>
-                {amostra.status.toUpperCase()}
+                {amostra.situacao || amostra.status.toUpperCase()}
               </span>
             </div>
             <p className="text-sm font-bold text-[#2d6a4f] mt-0.5">
@@ -667,6 +667,7 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
           </div>
 
           <div className="text-left sm:text-right text-xs text-gray-500">
+            <p><span className="font-semibold text-gray-700">Canteiro:</span> {amostra.canteiro?.trim() || 'Não vinculado'}</p>
             <p><span className="font-semibold text-gray-700">Semeadura:</span> {formatDateBR(amostra.dataSemeadura)}</p>
             <p><span className="font-semibold text-gray-700">Responsável:</span> {amostra.responsavel}</p>
           </div>
@@ -675,9 +676,10 @@ export const AvaliacaoView: React.FC<AvaliacaoViewProps> = ({
         {/* Tabela de Metadados em Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-gray-50 p-3.5 rounded-xl border border-gray-100">
           <div><span className="text-gray-500 font-medium">Nº do Lote:</span> <p className="font-bold text-gray-900">{amostra.lote}</p></div>
+          <div><span className="text-gray-500 font-medium">Canteiro:</span> <p className="font-bold text-[#1b4332]">{amostra.canteiro?.trim() || 'Não vinculado'}</p></div>
           <div><span className="text-gray-500 font-medium">Peneira / Cat:</span> <p className="font-bold text-gray-900">{amostra.peneira} • {amostra.categoria}</p></div>
           <div><span className="text-gray-500 font-medium">Safra:</span> <p className="font-bold text-gray-900">{amostra.safra}</p></div>
-          <div><span className="text-gray-500 font-medium">Qtd. Sementes:</span> <p className="font-bold text-[#1b4332]">100 sementes</p></div>
+          <div><span className="text-gray-500 font-medium">Qtd. Sementes:</span> <p className="font-bold text-[#1b4332]">{amostra.quantidadeSementes || 100} sementes</p></div>
           <div>
             <span className="text-gray-500 font-medium">
               {existingAvaliacao?.dataInicioTeste ? 'Início do Teste:' : 'Data Lançamento:'}

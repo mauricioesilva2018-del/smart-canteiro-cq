@@ -1,20 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Amostra, Usuario } from '../types';
 import { storageService } from '../services/storageService';
 import { exportService } from '../services/exportService';
 import { 
   Search, Filter, Plus, FileSpreadsheet, FileText, QrCode, 
-  Trash2, ClipboardCheck, ArrowUpDown, Calendar, Sprout, RefreshCw, Edit3, CheckCircle2,
-  AlertCircle, Database
+  Trash2, ClipboardCheck, Sprout, RefreshCw, Edit3, CheckCircle2,
+  AlertCircle, Database, UploadCloud, Clock, PlayCircle, AlertTriangle, MapPin
 } from 'lucide-react';
 import { NovaAmostraModal } from './NovaAmostraModal';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { ToastNotification, ToastMessage } from './ToastNotification';
-import { getAmostraLeituraInfo, formatDateBR } from '../utils/dateUtils';
+import { getAmostraLeituraInfo, getAmostraAcompanhamentoInfo, formatDateBR } from '../utils/dateUtils';
+
+type SituacaoFiltro = 'todos' | 'aguardando' | 'iniciada' | 'concluida' | 'pendencias';
 
 interface CanteirosListViewProps {
   currentUser: Usuario;
   onNewSample: () => void;
+  onImportExcel?: () => void;
   onOpenAvaliacao: (amostraId: string) => void;
   onShowQRCode: (amostra: Amostra) => void;
   initialStatusFilter?: string;
@@ -23,6 +26,7 @@ interface CanteirosListViewProps {
 export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
   currentUser,
   onNewSample,
+  onImportExcel,
   onOpenAvaliacao,
   onShowQRCode,
   initialStatusFilter = '',
@@ -34,6 +38,15 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
   // Filtro de Busca Global
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Filtro de Acompanhamento por Indicadores
+  const [situacaoFilter, setSituacaoFilter] = useState<SituacaoFiltro>(
+    initialStatusFilter === 'aguardando'
+      ? 'aguardando'
+      : initialStatusFilter === 'Concluído'
+      ? 'concluida'
+      : 'todos'
+  );
+
   // Filtros Específicos
   const [filterProtocolo, setFilterProtocolo] = useState('');
   const [filterLote, setFilterLote] = useState('');
@@ -41,7 +54,12 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
   const [filterCultura, setFilterCultura] = useState('');
   const [filterCategoria, setFilterCategoria] = useState('');
   const [filterSafra, setFilterSafra] = useState('');
-  const [filterStatus, setFilterStatus] = useState(initialStatusFilter);
+  const [filterCanteiro, setFilterCanteiro] = useState('');
+  const [filterStatus, setFilterStatus] = useState(
+    initialStatusFilter === 'Pendente' || initialStatusFilter === 'Concluído'
+      ? initialStatusFilter
+      : ''
+  );
   const [filterDataInicio, setFilterDataInicio] = useState('');
   const [filterDataFim, setFilterDataFim] = useState('');
 
@@ -50,8 +68,21 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  const canEditOrDelete = true; // Permite ação com confirmação para papéis operacionais
-  const isAdmin = currentUser.perfil === 'Administrador';
+  useEffect(() => {
+    if (initialStatusFilter === 'aguardando') {
+      setSituacaoFilter('aguardando');
+      setFilterStatus('');
+    } else if (initialStatusFilter === 'Concluído') {
+      setSituacaoFilter('concluida');
+      setFilterStatus('Concluído');
+    } else if (initialStatusFilter === 'Pendente') {
+      setSituacaoFilter('todos');
+      setFilterStatus('Pendente');
+    } else {
+      setSituacaoFilter('todos');
+      setFilterStatus('');
+    }
+  }, [initialStatusFilter]);
 
   const refreshList = () => {
     setAmostras(storageService.getAmostras());
@@ -84,42 +115,137 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
     }
   };
 
+  // Enriquecimento das amostras com estado operacional de acompanhamento
+  const amostrasComInfo = useMemo(() => {
+    return amostras.map((a) => {
+      const avaliacoesAmostra = avaliacoes.filter((v) => v.amostraId === a.id);
+      const avaliacao = avaliacoesAmostra[avaliacoesAmostra.length - 1];
+      const acompanhamento = getAmostraAcompanhamentoInfo(a, avaliacao);
+      return {
+        amostra: a,
+        avaliacao,
+        leituraInfo: acompanhamento.leituraInfo,
+        acompanhamento,
+      };
+    });
+  }, [amostras, avaliacoes]);
+
+  // Indicadores de Acompanhamento
+  const indicadores = useMemo(() => {
+    const totalPlantados = amostrasComInfo.length;
+    const aguardandoLeitura = amostrasComInfo.filter(
+      (i) => i.acompanhamento.isAguardandoLeitura
+    ).length;
+    const leituraIniciada = amostrasComInfo.filter(
+      (i) => i.acompanhamento.isLeituraIniciada
+    ).length;
+    const leituraConcluida = amostrasComInfo.filter(
+      (i) => i.acompanhamento.isLeituraConcluida
+    ).length;
+    const comPendencias = amostrasComInfo.filter(
+      (i) => i.acompanhamento.temPendencia
+    ).length;
+    return {
+      totalPlantados,
+      aguardandoLeitura,
+      leituraIniciada,
+      leituraConcluida,
+      comPendencias,
+    };
+  }, [amostrasComInfo]);
+
+  // Opções dinâmicas de filtro (Canteiro, Cultura, Categoria, Safra)
+  const canteirosDisponiveis = useMemo(() => {
+    return Array.from(
+      new Set(amostras.map((a) => (a.canteiro || '').trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [amostras]);
+
+  const categoriasDisponiveis = useMemo(() => {
+    return Array.from(
+      new Set(amostras.map((a) => (a.categoria || '').trim()).filter(Boolean))
+    ).sort();
+  }, [amostras]);
+
+  const safrasDisponiveis = useMemo(() => {
+    return Array.from(
+      new Set(amostras.map((a) => (a.safra || '').trim()).filter(Boolean))
+    ).sort();
+  }, [amostras]);
+
+  const culturasDisponiveis = useMemo(() => {
+    return Array.from(
+      new Set(['Soja', 'Milho', 'Sorgo', 'Algodão', 'Feijão', 'Trigo', ...amostras.map((a) => a.cultura).filter(Boolean)])
+    ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [amostras]);
+
   // Lógica de Filtragem Multi-Critério
-  const filteredAmostras = amostras.filter(a => {
-    // Search Global
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchGlobal = 
-        a.protocolo.toLowerCase().includes(query) ||
-        a.cultura.toLowerCase().includes(query) ||
-        a.cultivar.toLowerCase().includes(query) ||
-        a.lote.toLowerCase().includes(query) ||
-        a.responsavel.toLowerCase().includes(query);
-      if (!matchGlobal) return false;
-    }
+  const filteredItems = useMemo(() => {
+    return amostrasComInfo.filter(({ amostra: a, acompanhamento }) => {
+      if (situacaoFilter === 'aguardando' && !acompanhamento.isAguardandoLeitura) return false;
+      if (situacaoFilter === 'iniciada' && !acompanhamento.isLeituraIniciada) return false;
+      if (situacaoFilter === 'concluida' && !acompanhamento.isLeituraConcluida) return false;
+      if (situacaoFilter === 'pendencias' && !acompanhamento.temPendencia) return false;
 
-    if (filterProtocolo && !a.protocolo.toLowerCase().includes(filterProtocolo.toLowerCase())) return false;
-    if (filterLote && !a.lote.toLowerCase().includes(filterLote.toLowerCase())) return false;
-    if (filterCultivar && !a.cultivar.toLowerCase().includes(filterCultivar.toLowerCase())) return false;
-    if (filterCultura && a.cultura !== filterCultura) return false;
-    if (filterCategoria && a.categoria !== filterCategoria) return false;
-    if (filterSafra && a.safra !== filterSafra) return false;
-    if (filterStatus && a.status !== filterStatus) return false;
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchGlobal =
+          a.protocolo.toLowerCase().includes(query) ||
+          a.cultura.toLowerCase().includes(query) ||
+          a.cultivar.toLowerCase().includes(query) ||
+          a.lote.toLowerCase().includes(query) ||
+          a.categoria.toLowerCase().includes(query) ||
+          a.safra.toLowerCase().includes(query) ||
+          (a.canteiro || '').toLowerCase().includes(query) ||
+          a.responsavel.toLowerCase().includes(query);
+        if (!matchGlobal) return false;
+      }
 
-    if (filterDataInicio && a.dataSemeadura < filterDataInicio) return false;
-    if (filterDataFim && a.dataSemeadura > filterDataFim) return false;
+      if (filterProtocolo && !a.protocolo.toLowerCase().includes(filterProtocolo.toLowerCase())) return false;
+      if (filterLote && !a.lote.toLowerCase().includes(filterLote.toLowerCase())) return false;
+      if (filterCultivar && !a.cultivar.toLowerCase().includes(filterCultivar.toLowerCase())) return false;
+      if (filterCultura && a.cultura !== filterCultura) return false;
+      if (filterCategoria && a.categoria !== filterCategoria) return false;
+      if (filterSafra && a.safra !== filterSafra) return false;
+      if (filterCanteiro && (a.canteiro || '') !== filterCanteiro) return false;
+      if (filterStatus && a.status !== filterStatus) return false;
 
-    return true;
-  });
+      if (filterDataInicio && a.dataSemeadura < filterDataInicio) return false;
+      if (filterDataFim && a.dataSemeadura > filterDataFim) return false;
+
+      return true;
+    });
+  }, [
+    amostrasComInfo,
+    situacaoFilter,
+    searchQuery,
+    filterProtocolo,
+    filterLote,
+    filterCultivar,
+    filterCultura,
+    filterCategoria,
+    filterSafra,
+    filterCanteiro,
+    filterStatus,
+    filterDataInicio,
+    filterDataFim,
+  ]);
+
+  const filteredAmostras = useMemo(
+    () => filteredItems.map((i) => i.amostra),
+    [filteredItems]
+  );
 
   const resetFilters = () => {
     setSearchQuery('');
+    setSituacaoFilter('todos');
     setFilterProtocolo('');
     setFilterLote('');
     setFilterCultivar('');
     setFilterCultura('');
     setFilterCategoria('');
     setFilterSafra('');
+    setFilterCanteiro('');
     setFilterStatus('');
     setFilterDataInicio('');
     setFilterDataFim('');
@@ -140,11 +266,24 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onImportExcel && (
+            <button
+              type="button"
+              id="btn-canteiros-importar-excel"
+              onClick={onImportExcel}
+              className="flex items-center gap-1.5 bg-white hover:bg-gray-50 text-[#1b4332] border border-[#74c69d] px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              title="Importar Lotes via Planilha Excel (.xlsx / .xls)"
+            >
+              <UploadCloud className="w-4 h-4 text-[#2d6a4f]" />
+              <span>Importar Excel</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => exportService.exportToExcel(filteredAmostras)}
-            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+            className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer"
             title="Exportar para Excel"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -154,16 +293,124 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
           <button
             type="button"
             onClick={onNewSample}
-            className="flex items-center gap-1.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer"
+            className="flex items-center gap-1.5 bg-[#1b4332] hover:bg-[#2d6a4f] text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Nova Amostra</span>
+            <span>Nova Amostragem</span>
           </button>
         </div>
       </div>
 
+      {/* Indicadores de Acompanhamento Interativos */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setSituacaoFilter('todos');
+            setFilterStatus('');
+          }}
+          className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
+            situacaoFilter === 'todos' && !filterStatus
+              ? 'bg-[#f0f7f4] border-[#2d6a4f]'
+              : 'bg-white border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
+            <span>Total Plantados</span>
+            <Sprout className="w-4 h-4 text-[#2d6a4f]" />
+          </div>
+          <p className="text-2xl font-black text-gray-900 tabular-nums mt-1">
+            {indicadores.totalPlantados}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSituacaoFilter('aguardando');
+            setFilterStatus('');
+          }}
+          className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
+            situacaoFilter === 'aguardando'
+              ? 'bg-sky-50 border-sky-600'
+              : 'bg-white border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
+            <span>Aguardando Leitura</span>
+            <Clock className="w-4 h-4 text-sky-700" />
+          </div>
+          <p className="text-2xl font-black text-sky-900 tabular-nums mt-1">
+            {indicadores.aguardandoLeitura}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSituacaoFilter('iniciada');
+            setFilterStatus('');
+          }}
+          className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
+            situacaoFilter === 'iniciada'
+              ? 'bg-amber-50 border-amber-600'
+              : 'bg-white border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
+            <span>Leitura Iniciada</span>
+            <PlayCircle className="w-4 h-4 text-amber-700" />
+          </div>
+          <p className="text-2xl font-black text-amber-900 tabular-nums mt-1">
+            {indicadores.leituraIniciada}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSituacaoFilter('concluida');
+            setFilterStatus('');
+          }}
+          className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
+            situacaoFilter === 'concluida'
+              ? 'bg-emerald-50 border-emerald-700'
+              : 'bg-white border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
+            <span>Leitura Concluída</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+          </div>
+          <p className="text-2xl font-black text-emerald-900 tabular-nums mt-1">
+            {indicadores.leituraConcluida}
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSituacaoFilter('pendencias');
+            setFilterStatus('');
+          }}
+          className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer col-span-2 sm:col-span-1 ${
+            situacaoFilter === 'pendencias'
+              ? 'bg-rose-50 border-rose-600'
+              : 'bg-white border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
+            <span>Com Pendências</span>
+            <AlertTriangle className="w-4 h-4 text-rose-700" />
+          </div>
+          <p className="text-2xl font-black text-rose-800 tabular-nums mt-1">
+            {indicadores.comPendencias}
+          </p>
+        </button>
+      </div>
+
       {/* Bar de Busca Rápida e Toggle de Filtros Avançados */}
-      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3 items-center">
           
           {/* Busca Global */}
@@ -173,7 +420,7 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Busca rápida por protocolo, lote, cultura ou cultivar..."
+              placeholder="Pesquisar por lote, cultura, cultivar, categoria, safra, canteiro ou protocolo..."
               className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-sm font-medium text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
             />
             {searchQuery && (
@@ -191,8 +438,8 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
           <button
             type="button"
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all whitespace-nowrap cursor-pointer ${
-              showAdvancedFilters || filterStatus || filterCultura
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors whitespace-nowrap cursor-pointer ${
+              showAdvancedFilters || filterStatus || filterCultura || filterCanteiro || filterCategoria || filterCultivar
                 ? 'bg-[#2d6a4f] text-white border-[#1b4332]'
                 : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
             }`}
@@ -201,11 +448,11 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
             <span>Filtros Avançados</span>
           </button>
 
-          {(searchQuery || filterProtocolo || filterLote || filterCultivar || filterCultura || filterCategoria || filterSafra || filterStatus || filterDataInicio) && (
+          {(searchQuery || situacaoFilter !== 'todos' || filterProtocolo || filterLote || filterCultivar || filterCultura || filterCategoria || filterSafra || filterCanteiro || filterStatus || filterDataInicio) && (
             <button
               type="button"
               onClick={resetFilters}
-              className="text-xs font-semibold text-rose-600 hover:underline px-2 py-1 cursor-pointer"
+              className="text-xs font-semibold text-rose-600 hover:underline px-2 py-1 cursor-pointer whitespace-nowrap"
             >
               Limpar Filtros
             </button>
@@ -217,18 +464,6 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
         {showAdvancedFilters && (
           <div className="pt-3 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             
-            {/* Filtro Protocolo */}
-            <div>
-              <label className="block text-[11px] font-bold text-gray-600 mb-1">Protocolo</label>
-              <input
-                type="text"
-                value={filterProtocolo}
-                onChange={(e) => setFilterProtocolo(e.target.value)}
-                placeholder="Ex: PRT-2026"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
-              />
-            </div>
-
             {/* Filtro Lote */}
             <div>
               <label className="block text-[11px] font-bold text-gray-600 mb-1">Lote</label>
@@ -250,26 +485,36 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
               >
                 <option value="">Todas</option>
-                <option value="Soja">Soja</option>
-                <option value="Milho">Milho</option>
-                <option value="Sorgo">Sorgo</option>
-                <option value="Algodão">Algodão</option>
-                <option value="Feijão">Feijão</option>
-                <option value="Trigo">Trigo</option>
+                {culturasDisponiveis.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </select>
             </div>
 
-            {/* Filtro Status */}
+            {/* Filtro Cultivar */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-600 mb-1">Status</label>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">Cultivar</label>
+              <input
+                type="text"
+                value={filterCultivar}
+                onChange={(e) => setFilterCultivar(e.target.value)}
+                placeholder="Ex: M 8349"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
+              />
+            </div>
+
+            {/* Filtro Categoria */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">Categoria</label>
               <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
+                value={filterCategoria}
+                onChange={(e) => setFilterCategoria(e.target.value)}
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
               >
-                <option value="">Todos</option>
-                <option value="Pendente">Pendente</option>
-                <option value="Concluído">Concluído</option>
+                <option value="">Todas</option>
+                {categoriasDisponiveis.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
               </select>
             </div>
 
@@ -282,8 +527,52 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
               >
                 <option value="">Todas</option>
-                <option value="2025/2026">2025/2026</option>
-                <option value="2026/2027">2026/2027</option>
+                {safrasDisponiveis.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro Canteiro */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">Canteiro</label>
+              <select
+                value={filterCanteiro}
+                onChange={(e) => setFilterCanteiro(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
+              >
+                <option value="">Todos</option>
+                {canteirosDisponiveis.map((cant) => (
+                  <option key={cant} value={cant}>{cant}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro Protocolo */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">Protocolo</label>
+              <input
+                type="text"
+                value={filterProtocolo}
+                onChange={(e) => setFilterProtocolo(e.target.value)}
+                placeholder="Ex: PRT-2026"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
+              />
+            </div>
+
+            {/* Filtro Situação / Status */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-600 mb-1">Situação</label>
+              <select
+                value={situacaoFilter}
+                onChange={(e) => setSituacaoFilter(e.target.value as SituacaoFiltro)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800"
+              >
+                <option value="todos">Todas</option>
+                <option value="aguardando">Plantado – Aguardando Leitura</option>
+                <option value="iniciada">Leitura Iniciada</option>
+                <option value="concluida">Leitura Concluída</option>
+                <option value="pendencias">Com Pendências</option>
               </select>
             </div>
 
@@ -366,21 +655,19 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
               <table className="w-full text-left text-xs text-gray-700">
                 <thead className="bg-[#1b4332] text-white uppercase text-[11px] tracking-wider font-bold">
                   <tr>
-                    <th className="py-3.5 px-4">Protocolo</th>
+                    <th className="py-3.5 px-4">Protocolo / Canteiro</th>
                     <th className="py-3.5 px-3">Cultura / Cultivar</th>
                     <th className="py-3.5 px-3">Lote</th>
                     <th className="py-3.5 px-2">Safra</th>
                     <th className="py-3.5 px-3">Lançamento</th>
                     <th className="py-3.5 px-3">Leitura 7d</th>
                     <th className="py-3.5 px-3">Leitura 10d</th>
-                    <th className="py-3.5 px-3">Status da Leitura</th>
+                    <th className="py-3.5 px-3">Situação / Leitura</th>
                     <th className="py-3.5 px-4 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredAmostras.map((amostra) => {
-                    const avaliacao = avaliacoes.find(v => v.amostraId === amostra.id);
-                    const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
+                  {filteredItems.map(({ amostra, avaliacao, leituraInfo, acompanhamento }) => {
                     const totalTestes = storageService.getAvaliacoesByAmostraId(amostra.id);
 
                     return (
@@ -389,21 +676,30 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                         <td className="py-3.5 px-4 font-extrabold text-gray-900">
                           <div className="flex items-center gap-2">
                             <button
+                              type="button"
                               onClick={() => onShowQRCode(amostra)}
-                              className="p-1 rounded bg-gray-100 hover:bg-[#2d6a4f] hover:text-white text-gray-700 transition-colors"
+                              className="p-1 rounded bg-gray-100 hover:bg-[#2d6a4f] hover:text-white text-gray-700 transition-colors cursor-pointer"
                               title="Ver QR Code do Canteiro"
                             >
                               <QrCode className="w-3.5 h-3.5" />
                             </button>
-                            <span>{amostra.protocolo}</span>
-                            {totalTestes.length > 1 && (
-                              <span 
-                                className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300"
-                                title={`Lote com ${totalTestes.length} testes realizados no histórico`}
-                              >
-                                {totalTestes.length} testes
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span>{amostra.protocolo}</span>
+                                {totalTestes.length > 1 && (
+                                  <span 
+                                    className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 tabular-nums"
+                                    title={`Lote com ${totalTestes.length} testes realizados no histórico`}
+                                  >
+                                    {totalTestes.length} testes
+                                  </span>
+                                )}
+                              </div>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2d6a4f] mt-0.5">
+                                <MapPin className="w-3 h-3 shrink-0" />
+                                <span>{amostra.canteiro?.trim() || 'Canteiro não vinculado'}</span>
                               </span>
-                            )}
+                            </div>
                           </div>
                         </td>
 
@@ -420,13 +716,13 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                           </span>
                         </td>
 
-                        <td className="py-3.5 px-2 font-medium">{amostra.safra}</td>
+                        <td className="py-3.5 px-2 font-medium tabular-nums">{amostra.safra}</td>
 
-                        <td className="py-3.5 px-3 font-medium text-gray-700">
+                        <td className="py-3.5 px-3 font-medium text-gray-700 tabular-nums">
                           {formatDateBR(amostra.dataSemeadura)}
                         </td>
 
-                        <td className="py-3.5 px-3 font-bold text-[#1b4332]">
+                        <td className="py-3.5 px-3 font-bold text-[#1b4332] tabular-nums">
                           <div className="flex items-center gap-1">
                             <span>{formatDateBR(leituraInfo.data7d)}</span>
                             {leituraInfo.leitura7dRealizada && (
@@ -434,13 +730,13 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                             )}
                           </div>
                           {amostra.plantulasEmergidas7dias !== undefined && (
-                            <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                            <span className="text-[10px] text-emerald-800 font-extrabold bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded mt-0.5 inline-block tabular-nums">
                               {amostra.plantulasEmergidas7dias} emergidas
                             </span>
                           )}
                         </td>
 
-                        <td className="py-3.5 px-3 font-bold text-[#1b4332]">
+                        <td className="py-3.5 px-3 font-bold text-[#1b4332] tabular-nums">
                           <div className="flex items-center gap-1">
                             <span>{formatDateBR(leituraInfo.data10d)}</span>
                             {leituraInfo.leitura10dRealizada && (
@@ -449,26 +745,27 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                           </div>
                         </td>
 
-                        <td className="py-3.5 px-3">
-                          {leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
-                            <span className="inline-flex items-center gap-1 bg-amber-400 text-amber-950 px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
-                              🟡 LEITURA PENDENTE
+                        <td className="py-3.5 px-3 space-y-1">
+                          {acompanhamento.isLeituraConcluida ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                              <CheckCircle2 className="w-3 h-3" />
+                              LEITURA CONCLUÍDA
                             </span>
-                          ) : leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
-                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px] uppercase">
-                              🟢 LEITURA DE 10 DIAS REALIZADA
-                            </span>
-                          ) : leituraInfo.statusGeral === 'LEITURA_7D_REALIZADA' ? (
-                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px] uppercase">
-                              🟢 LEITURA DE 7 DIAS REALIZADA
-                            </span>
-                          ) : leituraInfo.statusGeral === 'ATRASADA' ? (
-                            <span className="inline-flex items-center gap-1 bg-rose-600 text-white px-2 py-0.5 rounded-full font-black text-[10px] uppercase">
-                              🔴 LEITURA ATRASADA
+                          ) : acompanhamento.isLeituraIniciada ? (
+                            <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                              <PlayCircle className="w-3 h-3" />
+                              LEITURA INICIADA
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full font-medium text-[10px]">
-                              Aguardando ({leituraInfo.diasParaProximaLeitura}d)
+                            <span className="inline-flex items-center gap-1 bg-sky-100 text-sky-900 px-2 py-0.5 rounded font-bold text-[10px] uppercase">
+                              <Clock className="w-3 h-3" />
+                              PLANTADO – AGUARDANDO LEITURA
+                            </span>
+                          )}
+
+                          {acompanhamento.temPendencia && (
+                            <span className="block text-[10px] font-semibold text-rose-700">
+                              {acompanhamento.motivosPendencia[0]}
                             </span>
                           )}
                         </td>
@@ -534,21 +831,19 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
 
             {/* Layout Cards (Mobile e Tablet) */}
             <div className="block lg:hidden divide-y divide-gray-100">
-              {filteredAmostras.map((amostra) => {
-                const avaliacao = avaliacoes.find(v => v.amostraId === amostra.id);
-                const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
+              {filteredItems.map(({ amostra, avaliacao, leituraInfo, acompanhamento }) => {
                 const totalTestes = storageService.getAvaliacoesByAmostraId(amostra.id);
 
                 return (
                   <div key={amostra.id} className="p-4 space-y-3">
                     
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-black text-gray-900 text-base">{amostra.protocolo}</span>
                           {totalTestes.length > 1 && (
                             <span 
-                              className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 tabular-nums"
                               title={`Lote com ${totalTestes.length} testes realizados`}
                             >
                               {totalTestes.length} testes
@@ -565,28 +860,27 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                         <p className="font-bold text-[#2d6a4f] text-sm mt-0.5">
                           {amostra.cultura} - {amostra.cultivar}
                         </p>
+                        <p className="text-[11px] font-semibold text-gray-600 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-[#2d6a4f]" />
+                          <span>{amostra.canteiro?.trim() || 'Canteiro não vinculado'}</span>
+                        </p>
                       </div>
 
-                      <div>
-                        {leituraInfo.statusGeral === 'PENDENTE_HOJE' ? (
-                          <span className="bg-amber-400 text-amber-950 font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
-                            🟡 LEITURA PENDENTE
+                      <div className="text-right">
+                        {acompanhamento.isLeituraConcluida ? (
+                          <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-900 font-bold text-[10px] px-2 py-1 rounded uppercase">
+                            <CheckCircle2 className="w-3 h-3" />
+                            CONCLUÍDA
                           </span>
-                        ) : leituraInfo.statusGeral === 'LEITURA_10D_REALIZADA' ? (
-                          <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full uppercase">
-                            🟢 10D REALIZADA
-                          </span>
-                        ) : leituraInfo.statusGeral === 'LEITURA_7D_REALIZADA' ? (
-                          <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2.5 py-1 rounded-full uppercase">
-                            🟢 7D REALIZADA
-                          </span>
-                        ) : leituraInfo.statusGeral === 'ATRASADA' ? (
-                          <span className="bg-rose-600 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
-                            🔴 ATRASADA
+                        ) : acompanhamento.isLeituraIniciada ? (
+                          <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 font-bold text-[10px] px-2 py-1 rounded uppercase">
+                            <PlayCircle className="w-3 h-3" />
+                            INICIADA
                           </span>
                         ) : (
-                          <span className="bg-gray-100 text-gray-700 font-medium text-[10px] px-2.5 py-1 rounded-full">
-                            {leituraInfo.diasParaProximaLeitura}d restantes
+                          <span className="inline-flex items-center gap-1 bg-sky-100 text-sky-900 font-bold text-[10px] px-2 py-1 rounded uppercase">
+                            <Clock className="w-3 h-3" />
+                            AGUARDANDO LEITURA
                           </span>
                         )}
                       </div>
@@ -595,8 +889,8 @@ export const CanteirosListView: React.FC<CanteirosListViewProps> = ({
                     <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-xl">
                       <div><span className="font-semibold text-gray-800">Lote:</span> {amostra.lote}</div>
                       <div><span className="font-semibold text-gray-800">Safra:</span> {amostra.safra}</div>
+                      <div><span className="font-semibold text-gray-800">Categoria:</span> {amostra.categoria}</div>
                       <div><span className="font-semibold text-gray-800">Lançamento:</span> {formatDateBR(amostra.dataSemeadura)}</div>
-                      <div><span className="font-semibold text-gray-800">Peneira:</span> {amostra.peneira}</div>
                       {amostra.tsiMatriz && (
                         <div className="col-span-2 text-[11px] text-[#1b4332] bg-emerald-50 px-2 py-1 rounded-md font-semibold border border-emerald-200">
                           <span className="font-bold">Matriz / TSI:</span> {amostra.tsiMatriz}

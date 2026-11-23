@@ -3,7 +3,7 @@
  * e regras de leituras de germinação (7 dias e 10 dias).
  */
 
-import { Amostra, Avaliacao } from '../types';
+import { Amostra, Avaliacao, SituacaoAmostra } from '../types';
 
 /**
  * Retorna a data atual no formato YYYY-MM-DD considerando fuso local do Brasil.
@@ -219,3 +219,89 @@ export function getAmostraLeituraInfo(amostra: Amostra, avaliacao?: Avaliacao): 
     alertaHoje,
   };
 }
+
+export interface AmostraAcompanhamentoInfo {
+  leituraInfo: LeituraInfo;
+  situacaoOperacional: SituacaoAmostra;
+  isAguardandoLeitura: boolean;
+  isLeituraIniciada: boolean;
+  isLeituraConcluida: boolean;
+  temPendencia: boolean;
+  motivosPendencia: string[];
+}
+
+/**
+ * Classifica a situação operacional completa de um lote plantado no canteiro:
+ * - PLANTADO – AGUARDANDO LEITURA: sem leitura de 7d ou 10d iniciada
+ * - LEITURA INICIADA: leitura de 7d realizada ou rascunho de 10d salvo, sem conclusão final
+ * - LEITURA CONCLUÍDA: leitura de 10d / avaliação concluída
+ * - Pendências: leitura atrasada, leitura prevista para hoje ainda não concluída ou sem canteiro vinculado
+ */
+export function getAmostraAcompanhamentoInfo(
+  amostra: Amostra,
+  avaliacao?: Avaliacao
+): AmostraAcompanhamentoInfo {
+  const leituraInfo = getAmostraLeituraInfo(amostra, avaliacao);
+  const hasConcludedAvaliacao = Boolean(
+    avaliacao &&
+      (avaliacao.statusTeste === 'concluido' ||
+        (!avaliacao.statusTeste && (avaliacao.germinacao > 0 || avaliacao.resultadoAprovacao)))
+  );
+  const isLeituraConcluida = Boolean(
+    amostra.status === 'Concluído' ||
+      amostra.leitura10diasRealizada ||
+      hasConcludedAvaliacao
+  );
+
+  const isLeituraIniciada = Boolean(
+    !isLeituraConcluida &&
+      (leituraInfo.leitura7dRealizada ||
+        Boolean(avaliacao && avaliacao.statusTeste === 'rascunho'))
+  );
+
+  const isAguardandoLeitura = Boolean(!isLeituraConcluida && !isLeituraIniciada);
+
+  const motivosPendencia: string[] = [];
+  if (!isLeituraConcluida) {
+    if (leituraInfo.statusGeral === 'ATRASADA') {
+      motivosPendencia.push(
+        leituraInfo.leitura7dRealizada
+          ? 'Leitura de 10 dias atrasada'
+          : 'Leitura de 7 dias atrasada'
+      );
+    } else if (leituraInfo.statusGeral === 'PENDENTE_HOJE') {
+      motivosPendencia.push(
+        leituraInfo.leitura7dRealizada
+          ? 'Leitura de 10 dias prevista para hoje'
+          : 'Leitura de 7 dias prevista para hoje'
+      );
+    }
+  }
+  if (!amostra.canteiro || !amostra.canteiro.trim()) {
+    motivosPendencia.push('Sem canteiro vinculado');
+  }
+
+  const temPendencia = motivosPendencia.length > 0;
+
+  let situacaoOperacional: SituacaoAmostra = 'PLANTADO – AGUARDANDO LEITURA';
+  if (isLeituraConcluida) {
+    situacaoOperacional = 'LEITURA CONCLUÍDA';
+  } else if (isLeituraIniciada) {
+    situacaoOperacional = 'LEITURA INICIADA';
+  } else if (amostra.situacao === 'COM PENDÊNCIA' || (temPendencia && leituraInfo.statusGeral === 'ATRASADA')) {
+    situacaoOperacional = 'COM PENDÊNCIA';
+  } else {
+    situacaoOperacional = 'PLANTADO – AGUARDANDO LEITURA';
+  }
+
+  return {
+    leituraInfo,
+    situacaoOperacional,
+    isAguardandoLeitura,
+    isLeituraIniciada,
+    isLeituraConcluida,
+    temPendencia,
+    motivosPendencia,
+  };
+}
+

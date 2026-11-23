@@ -2,6 +2,12 @@ export type PerfilUsuario = 'Administrador' | 'Operador' | 'Qualidade' | 'Visual
 
 export type StatusAmostra = 'Pendente' | 'Concluído';
 
+export type SituacaoAmostra =
+  | 'PLANTADO – AGUARDANDO LEITURA'
+  | 'LEITURA INICIADA'
+  | 'LEITURA CONCLUÍDA'
+  | 'COM PENDÊNCIA';
+
 export type ResultadoAprovacao = 'Aprovado' | 'Reprovado';
 
 export interface Amostra {
@@ -13,6 +19,9 @@ export interface Amostra {
   peneira: string;
   categoria: string;
   safra: string;
+  canteiro?: string; // Canteiro / Localização física na UBS
+  situacao?: SituacaoAmostra; // Situação operacional da amostragem
+  origemCadastro?: 'manual' | 'importacao_excel';
   dataSemeadura: string; // Data de lançamento da amostra
   responsavel: string;
   observacoes: string;

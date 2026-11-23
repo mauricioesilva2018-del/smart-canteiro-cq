@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
-    { id: 'nova-amostra', label: '+ Nova Amostra', icon: PlusCircle, highlight: true, roles: ['Administrador', 'Operador', 'Qualidade'] },
+    { id: 'nova-amostra', label: '+ Nova Amostragem', icon: PlusCircle, highlight: true, roles: ['Administrador', 'Operador', 'Qualidade'] },
     { id: 'canteiros', label: 'Canteiros', icon: Sprout, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
     { id: 'avaliacoes', label: 'Avaliações', icon: ClipboardCheck, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },
     { id: 'qualidade', label: 'Qualidade', icon: ShieldCheck, roles: ['Administrador', 'Operador', 'Qualidade', 'Visualizador'] },

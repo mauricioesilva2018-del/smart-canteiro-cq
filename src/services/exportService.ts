@@ -28,6 +28,8 @@ export const exportService = {
           'Identificação do Teste': 'Teste 1 (Pendente)',
           'Nº Teste': 1,
           'Protocolo': amostra.protocolo,
+          'Canteiro': amostra.canteiro || '-',
+          'Situação': amostra.situacao || 'PLANTADO – AGUARDANDO LEITURA',
           'Número do Lote': amostra.lote,
           'Cultura': amostra.cultura,
           'Cultivar': amostra.cultivar,
@@ -78,6 +80,8 @@ export const exportService = {
             'Identificação do Teste': `Teste ${numTeste}`,
             'Nº Teste': numTeste,
             'Protocolo': amostra.protocolo,
+            'Canteiro': amostra.canteiro || '-',
+            'Situação': amostra.situacao || (teste.statusTeste === 'concluido' ? 'LEITURA CONCLUÍDA' : 'LEITURA INICIADA'),
             'Número do Lote': amostra.lote,
             'Cultura': amostra.cultura,
             'Cultivar': amostra.cultivar,
@@ -420,8 +424,8 @@ export const exportService = {
     doc.setTextColor(40, 40, 40);
 
     // Coluna 2
-    doc.setFont('helvetica', 'bold'); doc.text('Peneira:', 105, currentY + 14);
-    doc.setFont('helvetica', 'normal'); doc.text(amostra.peneira || 'N/A', 126, currentY + 14);
+    doc.setFont('helvetica', 'bold'); doc.text('Peneira / Cant.:', 105, currentY + 14);
+    doc.setFont('helvetica', 'normal'); doc.text(`${amostra.peneira || 'N/A'}${amostra.canteiro ? ` (${amostra.canteiro})` : ''}`, 132, currentY + 14);
 
     doc.setFont('helvetica', 'bold'); doc.text('Categoria:', 105, currentY + 20);
     doc.setFont('helvetica', 'normal'); doc.text(amostra.categoria, 126, currentY + 20);

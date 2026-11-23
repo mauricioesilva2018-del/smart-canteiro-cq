@@ -41,6 +41,7 @@ import {
 import { indexedDbService } from './indexedDbService';
 import { calculateLeituraDates, addDaysToDate, getTodayBR, getDaysDifference } from '../utils/dateUtils';
 import { compressBase64Image } from '../utils/imageUtils';
+import { ParsedExcelRow, normalizeLoteCode } from '../utils/excelImportUtils';
 
 
 const STORAGE_KEYS = {
@@ -123,6 +124,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '6.5',
     categoria: 'C1',
     safra: '2025/2026',
+    canteiro: 'Canteiro A-01',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-15',
     responsavel: 'Mariana Silva (Qualidade)',
     observacoes: 'Amostra referente ao recebimento da Unidade Beneficiadora Uberaba.',
@@ -151,6 +155,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: 'R2L',
     categoria: 'S1',
     safra: '2025/2026',
+    canteiro: 'Canteiro A-02',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-18',
     responsavel: 'João Pedro (Campo)',
     observacoes: 'Tratamento industrial de sementes (TIS) aplicado com fungicida e inseticida.',
@@ -170,6 +177,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '7.0',
     categoria: 'C2',
     safra: '2025/2026',
+    canteiro: 'Canteiro A-03',
+    situacao: 'PLANTADO – AGUARDANDO LEITURA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-21',
     responsavel: 'Mariana Silva (Qualidade)',
     observacoes: 'Teste de emergência em canteiro com areia fina lavada.',
@@ -189,6 +199,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '4.0',
     categoria: 'S2',
     safra: '2025/2026',
+    canteiro: 'Canteiro B-01',
+    situacao: 'PLANTADO – AGUARDANDO LEITURA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-22',
     responsavel: 'João Pedro (Campo)',
     observacoes: 'Canteiro estufado a 25°C com umidade controlada a 70%.',
@@ -208,6 +221,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '5.5',
     categoria: 'Básica',
     safra: '2025/2026',
+    canteiro: 'Canteiro B-02',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-10',
     responsavel: 'Mariana Silva (Qualidade)',
     observacoes: 'Lote de alta linhagem genética. Sementes deslintadas.',
@@ -227,6 +243,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '14/64',
     categoria: 'C1',
     safra: '2025/2026',
+    canteiro: 'Canteiro B-03',
+    situacao: 'PLANTADO – AGUARDANDO LEITURA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-24',
     responsavel: 'Carlos Eduardo (Admin)',
     observacoes: 'Sementes comerciais de feijão carioca.',
@@ -247,6 +266,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '6.5',
     categoria: 'C1',
     safra: '2025/2026',
+    canteiro: 'Canteiro C-01',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-25',
     responsavel: 'Mariana Silva (Qualidade)',
     observacoes: 'Teste de validação: Germinação 84,9% (Regra: < 85% -> Vermelho)',
@@ -266,6 +288,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: 'R2L',
     categoria: 'S1',
     safra: '2025/2026',
+    canteiro: 'Canteiro C-02',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-26',
     responsavel: 'João Pedro (Campo)',
     observacoes: 'Teste de validação: Germinação exatamente 85,0% (Regra: 85% a 90% -> Amarelo)',
@@ -285,6 +310,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '6.0',
     categoria: 'C2',
     safra: '2025/2026',
+    canteiro: 'Canteiro C-03',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-27',
     responsavel: 'Mariana Silva (Qualidade)',
     observacoes: 'Teste de validação: Germinação exatamente 90,0% (Regra: 85% a 90% -> Amarelo)',
@@ -304,6 +332,9 @@ const INITIAL_AMOSTRAS: Amostra[] = [
     peneira: '5.0',
     categoria: 'Básica',
     safra: '2025/2026',
+    canteiro: 'Canteiro C-04',
+    situacao: 'LEITURA CONCLUÍDA',
+    origemCadastro: 'manual',
     dataSemeadura: '2026-07-28',
     responsavel: 'Carlos Eduardo (Admin)',
     observacoes: 'Teste de validação: Germinação 90,1% (Regra: > 90% -> Verde)',
@@ -1166,12 +1197,24 @@ class StorageService {
           ams101.testeAtualNumero = 2;
         }
 
-        // Garante que o campo tsiMatriz inicial esteja presente nos lotes demonstrativos
+        // Garante que campos iniciais (tsiMatriz, canteiro) estejam presentes nos lotes demonstrativos
         for (const initA of INITIAL_AMOSTRAS) {
           const found = this.amostras.find(a => a.id === initA.id);
           if (found) {
+            let changed = false;
             if (!found.tsiMatriz && initA.tsiMatriz) {
               found.tsiMatriz = initA.tsiMatriz;
+              changed = true;
+            }
+            if (!found.canteiro && initA.canteiro) {
+              found.canteiro = initA.canteiro;
+              changed = true;
+            }
+            if (!found.situacao && initA.situacao) {
+              found.situacao = initA.situacao;
+              changed = true;
+            }
+            if (changed) {
               await indexedDbService.saveAmostraLocal(found);
             }
           } else {
@@ -1613,6 +1656,36 @@ class StorageService {
     return this.amostras.find(a => a.id === id || a.protocolo === id);
   }
 
+  getUniqueCanteiros(): string[] {
+    const set = new Set<string>();
+    this.amostras.forEach(a => {
+      if (a.canteiro && a.canteiro.trim()) {
+        set.add(a.canteiro.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }
+
+  private generateNextProtocolo(existingProtocolos: Set<string>): string {
+    const year = new Date().getFullYear();
+    let maxSeq = 0;
+    existingProtocolos.forEach(p => {
+      const m = String(p || '').match(/PRT-\d{4}-(\d+)/i);
+      if (m) {
+        const num = parseInt(m[1], 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    });
+    let nextSeq = Math.max(maxSeq + 1, existingProtocolos.size + 1);
+    let candidate = `PRT-${year}-${String(nextSeq).padStart(3, '0')}`;
+    while (existingProtocolos.has(candidate)) {
+      nextSeq++;
+      candidate = `PRT-${year}-${String(nextSeq).padStart(3, '0')}`;
+    }
+    existingProtocolos.add(candidate);
+    return candidate;
+  }
+
   async saveAmostra(amostraData: Omit<Amostra, 'id' | 'dataCadastro' | 'dataAtualizacao' | 'qrCode' | 'status'> & { id?: string; status?: Amostra['status'] }): Promise<Amostra> {
     const now = new Date().toISOString();
     let targetAmostra: Amostra;
@@ -1625,6 +1698,8 @@ class StorageService {
       targetAmostra = {
         ...(existing || {} as Amostra),
         ...amostraData,
+        canteiro: amostraData.canteiro !== undefined ? amostraData.canteiro.trim() : (existing?.canteiro || ''),
+        situacao: amostraData.situacao || existing?.situacao || 'PLANTADO – AGUARDANDO LEITURA',
         dataLeitura7dias: amostraData.dataLeitura7dias || dataLeitura7dias,
         dataLeitura10dias: amostraData.dataLeitura10dias || dataLeitura10dias,
         dataAtualizacao: now,
@@ -1635,6 +1710,9 @@ class StorageService {
         ...amostraData,
         id: newId,
         status: 'Pendente',
+        situacao: amostraData.situacao || 'PLANTADO – AGUARDANDO LEITURA',
+        origemCadastro: amostraData.origemCadastro || 'manual',
+        canteiro: amostraData.canteiro ? amostraData.canteiro.trim() : '',
         qrCode: amostraData.protocolo,
         dataCadastro: now,
         dataAtualizacao: now,
@@ -1676,6 +1754,182 @@ class StorageService {
     }
 
     return targetAmostra;
+  }
+
+  /**
+   * Importação em lote de amostragens via planilha Excel (.xlsx / .xls).
+   * Regras:
+   * - Novos registros recebem situação: 'PLANTADO – AGUARDANDO LEITURA' e status 'Pendente'.
+   * - Controle de duplicidade: nunca duplica lotes existentes, nunca sobrescreve resultados de avaliações já lançadas
+   *   e só atualiza vínculo de canteiro ou dados cadastrais quando explicitamente autorizado pelo usuário.
+   */
+  async importarAmostrasCanteiroEmMassa(
+    linhas: ParsedExcelRow[],
+    usuarioNome: string
+  ): Promise<{
+    cadastrados: number;
+    atualizados: number;
+    ignorados: number;
+    amostrasCriadas: Amostra[];
+    amostrasAtualizadas: Amostra[];
+  }> {
+    const now = new Date().toISOString();
+    const existingProtocolos = new Set(
+      this.amostras.map(a => String(a.protocolo || '').trim()).filter(Boolean)
+    );
+    const existingLotesMap = new Map<string, Amostra>();
+    this.amostras.forEach(a => {
+      const k = normalizeLoteCode(a.lote);
+      if (k && !existingLotesMap.has(k)) {
+        existingLotesMap.set(k, a);
+      }
+    });
+
+    let cadastrados = 0;
+    let atualizados = 0;
+    let ignorados = 0;
+    const amostrasCriadas: Amostra[] = [];
+    const amostrasAtualizadas: Amostra[] = [];
+
+    for (const row of linhas) {
+      if (row.errors.length > 0 || row.action === 'IGNORAR' || row.duplicateStatus === 'DUPLICADO_PLANILHA') {
+        ignorados++;
+        continue;
+      }
+
+      const loteNorm = normalizeLoteCode(row.lote);
+      if (!loteNorm) {
+        ignorados++;
+        continue;
+      }
+
+      const existing = existingLotesMap.get(loteNorm);
+
+      // Segurança extra contra duplicidade: se já existe e a ação não é atualização autorizada, ignora
+      if (existing && row.action !== 'ATUALIZAR_AUTORIZADO') {
+        ignorados++;
+        continue;
+      }
+
+      if (existing && row.action === 'ATUALIZAR_AUTORIZADO') {
+        // Atualiza apenas metadados cadastrais autorizados, preservando 100% os resultados de leitura/avaliação
+        // e preservando o vínculo de canteiro existente salvo se o usuário autorizou alterá-lo (ou estava vazio).
+        const manterCanteiroExistente = Boolean(existing.canteiro && existing.canteiro.trim()) && !row.autorizarAlterarVinculo;
+        const canteiroFinal = manterCanteiroExistente
+          ? existing.canteiro
+          : (row.canteiro?.trim() || existing.canteiro || '');
+
+        const updatedAmostra: Amostra = {
+          ...existing,
+          cultura: row.cultura || existing.cultura,
+          cultivar: row.cultivar || existing.cultivar,
+          categoria: row.categoria || existing.categoria,
+          safra: row.safra || existing.safra,
+          peneira: row.peneira && row.peneira !== 'N/A' ? row.peneira : existing.peneira,
+          tsiMatriz: row.tsiMatriz || existing.tsiMatriz || '',
+          canteiro: canteiroFinal,
+          observacoes: row.observacoes || existing.observacoes || '',
+          dataAtualizacao: now,
+        };
+
+        await indexedDbService.saveAmostraLocal(updatedAmostra);
+        await indexedDbService.enqueueSyncItem({
+          id: 'sync-ams-' + updatedAmostra.id,
+          entidadeId: updatedAmostra.id,
+          tipo: 'AMOSTRA_SAVE',
+          titulo: `Atualização Importada: ${updatedAmostra.protocolo}`,
+          payload: updatedAmostra,
+          dataCriacao: now,
+          status: 'pendente',
+          tentativas: 0,
+        });
+
+        const idx = this.amostras.findIndex(a => a.id === updatedAmostra.id);
+        if (idx !== -1) {
+          this.amostras[idx] = updatedAmostra;
+        }
+        existingLotesMap.set(loteNorm, updatedAmostra);
+        amostrasAtualizadas.push(updatedAmostra);
+        atualizados++;
+        continue;
+      }
+
+      // Novo cadastro (lote inédito)
+      if (!existing && row.action === 'CADASTRAR') {
+        const protocoloFinal =
+          row.protocolo && !existingProtocolos.has(row.protocolo)
+            ? row.protocolo
+            : this.generateNextProtocolo(existingProtocolos);
+        existingProtocolos.add(protocoloFinal);
+
+        const { dataLeitura7dias, dataLeitura10dias } = calculateLeituraDates(row.dataSemeadura);
+        const newId = 'ams-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+
+        const novaAmostra: Amostra = {
+          id: newId,
+          protocolo: protocoloFinal,
+          cultura: row.cultura,
+          cultivar: row.cultivar,
+          lote: row.lote.trim(),
+          peneira: row.peneira || 'N/A',
+          categoria: row.categoria || 'C1',
+          safra: row.safra || '2025/2026',
+          canteiro: row.canteiro ? row.canteiro.trim() : '',
+          situacao: 'PLANTADO – AGUARDANDO LEITURA',
+          origemCadastro: 'importacao_excel',
+          dataSemeadura: row.dataSemeadura,
+          responsavel: row.responsavel || usuarioNome || 'Operador',
+          observacoes: row.observacoes || '',
+          status: 'Pendente',
+          qrCode: protocoloFinal,
+          dataCadastro: now,
+          dataAtualizacao: now,
+          quantidadeSementes: row.quantidadeSementes || 100,
+          tsiMatriz: row.tsiMatriz || '',
+          dataInicioTeste: row.dataSemeadura,
+          dataLeitura7Dias: dataLeitura7dias,
+          dataLeitura10Dias: dataLeitura10dias,
+          dataLeitura7dias,
+          dataLeitura10dias,
+          leitura7diasRealizada: false,
+          leitura10diasRealizada: false,
+        };
+
+        await indexedDbService.saveAmostraLocal(novaAmostra);
+        await indexedDbService.enqueueSyncItem({
+          id: 'sync-ams-' + novaAmostra.id,
+          entidadeId: novaAmostra.id,
+          tipo: 'AMOSTRA_SAVE',
+          titulo: `Importação Canteiro: ${novaAmostra.protocolo}`,
+          payload: novaAmostra,
+          dataCriacao: now,
+          status: 'pendente',
+          tentativas: 0,
+        });
+
+        this.amostras.unshift(novaAmostra);
+        existingLotesMap.set(loteNorm, novaAmostra);
+        amostrasCriadas.push(novaAmostra);
+        cadastrados++;
+      } else {
+        ignorados++;
+      }
+    }
+
+    this.pendingSyncCount += cadastrados + atualizados;
+    this.notify();
+
+    if (typeof window !== 'undefined' && navigator.onLine && (cadastrados > 0 || atualizados > 0)) {
+      setTimeout(() => this.processSyncQueue(), 50);
+    }
+
+    return {
+      cadastrados,
+      atualizados,
+      ignorados,
+      amostrasCriadas,
+      amostrasAtualizadas,
+    };
   }
 
   async deleteAmostra(id: string): Promise<boolean> {
@@ -1849,6 +2103,7 @@ class StorageService {
     const updatedAmostra: Amostra = {
       ...amostra,
       status: 'Pendente',
+      situacao: 'PLANTADO – AGUARDANDO LEITURA',
       totalTestes: nextSeq,
       testeAtualNumero: nextSeq,
       dataInicioTeste,
@@ -1917,6 +2172,7 @@ class StorageService {
 
     const updatedAmostra: Amostra = {
       ...amostra,
+      situacao: amostra.status === 'Concluído' ? 'LEITURA CONCLUÍDA' : 'LEITURA INICIADA',
       plantulasEmergidas7dias: data.plantulasEmergidas,
       leitura7diasRealizada: true,
       dataRealizacao7dias: dataLeitura,
@@ -2053,9 +2309,11 @@ class StorageService {
 
     if (amostra) {
       const currentTotal = Math.max(amostra.totalTestes || 1, resolvedTesteNumero);
+      const isRascunho = avaliacaoData.statusTeste === 'rascunho' || is7d;
       updatedAmostra = {
         ...amostra,
-        status: is7d ? 'Pendente' : 'Concluído',
+        status: isRascunho ? 'Pendente' : 'Concluído',
+        situacao: isRascunho ? 'LEITURA INICIADA' : 'LEITURA CONCLUÍDA',
         totalTestes: currentTotal,
         testeAtualNumero: resolvedTesteNumero,
         ...(dataInicioTeste ? { dataInicioTeste } : {}),
@@ -2064,8 +2322,8 @@ class StorageService {
         leitura7diasRealizada: amostra.leitura7diasRealizada || is7d,
         dataRealizacao7dias: amostra.dataRealizacao7dias || (is7d ? (avaliacaoData.dataAvaliacao || now.toISOString()) : undefined),
         plantulasEmergidas7dias: plantulasEmergidas7dias !== undefined ? plantulasEmergidas7dias : amostra.plantulasEmergidas7dias,
-        leitura10diasRealizada: !is7d,
-        dataRealizacao10dias: !is7d ? (avaliacaoData.dataAvaliacao || now.toISOString()) : amostra.dataRealizacao10dias,
+        leitura10diasRealizada: !isRascunho,
+        dataRealizacao10dias: !isRascunho ? (avaliacaoData.dataAvaliacao || now.toISOString()) : amostra.dataRealizacao10dias,
         dataAtualizacao: now.toISOString(),
       };
     }
@@ -2149,6 +2407,9 @@ class StorageService {
             const updatedAmostra: Amostra = {
               ...amostra,
               status: 'Pendente',
+              situacao: amostra.leitura7diasRealizada
+                ? 'LEITURA INICIADA'
+                : 'PLANTADO – AGUARDANDO LEITURA',
               totalTestes: 0,
               testeAtualNumero: 1,
               leitura10diasRealizada: false,
@@ -2162,11 +2423,15 @@ class StorageService {
           } else {
             // Outros testes permanecem intactos no histórico
             const ultimoRestante = remaining[remaining.length - 1];
+            const isConcluido = Boolean(ultimoRestante.statusTeste === 'concluido' || ultimoRestante.resultadoAprovacao);
             const updatedAmostra: Amostra = {
               ...amostra,
               totalTestes: remaining.length,
               testeAtualNumero: ultimoRestante.testeNumero || remaining.length,
-              status: (ultimoRestante.statusTeste === 'concluido' || ultimoRestante.resultadoAprovacao) ? 'Concluído' : 'Pendente',
+              status: isConcluido ? 'Concluído' : 'Pendente',
+              situacao: isConcluido
+                ? 'LEITURA CONCLUÍDA'
+                : (amostra.leitura7diasRealizada ? 'LEITURA INICIADA' : 'PLANTADO – AGUARDANDO LEITURA'),
               dataAtualizacao: new Date().toISOString(),
             };
             await indexedDbService.saveAmostraLocal(updatedAmostra);

@@ -33,11 +33,17 @@ export default function App() {
 
   // Modais e Seleções
   const [isNovaAmostraOpen, setIsNovaAmostraOpen] = useState(false);
+  const [novaAmostraInitialMode, setNovaAmostraInitialMode] = useState<'manual' | 'importar'>('manual');
   const [selectedAmostraForAvaliacaoId, setSelectedAmostraForAvaliacaoId] = useState<string | null>(null);
   const [selectedAmostraForQRCode, setSelectedAmostraForQRCode] = useState<Amostra | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   const [canteiroFilterStatus, setCanteiroFilterStatus] = useState<string>('');
+
+  const openNewSampleModal = (mode: 'manual' | 'importar' = 'manual') => {
+    setNovaAmostraInitialMode(mode);
+    setIsNovaAmostraOpen(true);
+  };
 
   // Sincronização de eventos de rede e storage
   useEffect(() => {
@@ -151,7 +157,7 @@ export default function App() {
           activeTab={activeTab}
           setActiveTab={(tab) => {
             if (tab === 'nova-amostra') {
-              setIsNovaAmostraOpen(true);
+              openNewSampleModal('manual');
             } else {
               setActiveTab(tab);
               if (tab !== 'avaliacoes') {
@@ -170,7 +176,7 @@ export default function App() {
           {/* TAB 1: DASHBOARD */}
           {activeTab === 'dashboard' && (
             <DashboardView
-              onNewSample={() => setIsNovaAmostraOpen(true)}
+              onNewSample={() => openNewSampleModal('manual')}
               onNavigateToCanteiros={(statusFilter) => {
                 setCanteiroFilterStatus(statusFilter || '');
                 setActiveTab('canteiros');
@@ -183,7 +189,8 @@ export default function App() {
           {activeTab === 'canteiros' && (
             <CanteirosListView
               currentUser={currentUser}
-              onNewSample={() => setIsNovaAmostraOpen(true)}
+              onNewSample={() => openNewSampleModal('manual')}
+              onImportExcel={() => openNewSampleModal('importar')}
               onOpenAvaliacao={handleOpenAvaliacao}
               onShowQRCode={(amostra) => setSelectedAmostraForQRCode(amostra)}
               initialStatusFilter={canteiroFilterStatus}
@@ -204,7 +211,8 @@ export default function App() {
             ) : (
               <CanteirosListView
                 currentUser={currentUser}
-                onNewSample={() => setIsNovaAmostraOpen(true)}
+                onNewSample={() => openNewSampleModal('manual')}
+                onImportExcel={() => openNewSampleModal('importar')}
                 onOpenAvaliacao={handleOpenAvaliacao}
                 onShowQRCode={(amostra) => setSelectedAmostraForQRCode(amostra)}
                 initialStatusFilter="Pendente"
@@ -239,14 +247,19 @@ export default function App() {
 
       </div>
 
-      {/* MODAL: NOVA AMOSTRA */}
+      {/* MODAL: NOVA AMOSTRAGEM (MANUAL OU IMPORTAR EXCEL) */}
       {isNovaAmostraOpen && (
         <NovaAmostraModal
           currentUser={currentUser}
+          initialMode={novaAmostraInitialMode}
           onClose={() => setIsNovaAmostraOpen(false)}
           onSuccess={(newAmostra) => {
             setIsNovaAmostraOpen(false);
             handleOpenAvaliacao(newAmostra.id);
+          }}
+          onImportSuccess={() => {
+            setCanteiroFilterStatus('aguardando');
+            setActiveTab('canteiros');
           }}
         />
       )}

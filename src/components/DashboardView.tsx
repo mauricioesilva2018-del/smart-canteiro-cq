@@ -305,6 +305,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </p>
                     <p className="text-xs text-gray-600">
                       Lote: <strong className="text-gray-800">{amostra.lote}</strong> • Peneira: {amostra.peneira}
+                      {amostra.canteiro ? ` • ${amostra.canteiro}` : ''}
                     </p>
                     <div className="pt-1 text-[11px] text-gray-600 flex flex-col gap-0.5">
                       <span>Lançamento: <strong>{formatDateBR(amostra.dataSemeadura)}</strong></span>
@@ -389,6 +390,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                         <td className="py-3 px-3 font-semibold text-gray-800">
                           {amostra.lote}
+                          {amostra.canteiro && (
+                            <span className="block text-[10px] font-medium text-[#2d6a4f]">{amostra.canteiro}</span>
+                          )}
                         </td>
 
                         <td className="py-3 px-3 font-medium text-gray-700">

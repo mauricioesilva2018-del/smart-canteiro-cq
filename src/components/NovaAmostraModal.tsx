@@ -1,25 +1,38 @@
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
 import { Amostra, Usuario } from '../types';
-import { PlusCircle, QrCode, CheckCircle, X, Sparkles, Sprout, Edit3, Calendar, Clock } from 'lucide-react';
+import { CheckCircle, X, Sprout, Edit3, Calendar, FileSpreadsheet, ClipboardEdit, MapPin } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { calculateLeituraDates, formatDateBR, getTodayBR } from '../utils/dateUtils';
+import { ImportarAmostrasExcelPanel } from './ImportarAmostrasExcelPanel';
 
 interface NovaAmostraModalProps {
   currentUser: Usuario;
   editingAmostra?: Amostra | null;
+  initialMode?: 'manual' | 'importar';
   onClose: () => void;
   onSuccess: (savedAmostra: Amostra) => void;
+  onImportSuccess?: (result: {
+    cadastrados: number;
+    atualizados: number;
+    ignorados: number;
+  }) => void;
 }
 
 export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
   currentUser,
   editingAmostra,
+  initialMode = 'manual',
   onClose,
   onSuccess,
+  onImportSuccess,
 }) => {
+  const [mode, setMode] = useState<'manual' | 'importar'>(
+    editingAmostra ? 'manual' : initialMode
+  );
   // Auto-gerar protocolo sugerido se for novo
   const existingAmostras = storageService.getAmostras();
+  const existingCanteiros = storageService.getUniqueCanteiros();
   const nextNumber = existingAmostras.length + 1;
   const suggestedProtocolo = `PRT-2026-${String(nextNumber).padStart(3, '0')}`;
 
@@ -30,6 +43,7 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
   const [peneira, setPeneira] = useState(editingAmostra ? editingAmostra.peneira : '6.5');
   const [categoria, setCategoria] = useState(editingAmostra ? editingAmostra.categoria : 'C1');
   const [safra, setSafra] = useState(editingAmostra ? editingAmostra.safra : '2025/2026');
+  const [canteiro, setCanteiro] = useState(editingAmostra?.canteiro || '');
   const [dataSemeadura, setDataSemeadura] = useState(
     editingAmostra ? editingAmostra.dataSemeadura : getTodayBR()
   );
@@ -63,6 +77,8 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
         peneira: peneira.trim() || 'N/A',
         categoria,
         safra,
+        canteiro: canteiro.trim(),
+        ...(editingAmostra ? {} : { situacao: 'PLANTADO – AGUARDANDO LEITURA' as const, origemCadastro: 'manual' as const }),
         dataSemeadura,
         responsavel: responsavel || currentUser?.nome || 'Operador',
         observacoes: observacoes ? observacoes.trim() : '',
@@ -87,24 +103,39 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden my-8">
+      <div
+        className={`bg-white rounded-2xl w-full shadow-2xl border border-gray-100 overflow-hidden my-8 transition-all ${
+          mode === 'importar' && !editingAmostra ? 'max-w-5xl' : 'max-w-2xl'
+        }`}
+      >
         
         {/* Header */}
         <div className="bg-[#1b4332] p-5 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#2d6a4f] rounded-xl border border-[#40916c]">
-              {editingAmostra ? <Edit3 className="w-6 h-6 text-[#d8f3dc]" /> : <Sprout className="w-6 h-6 text-[#d8f3dc]" />}
+              {editingAmostra ? (
+                <Edit3 className="w-6 h-6 text-[#d8f3dc]" />
+              ) : mode === 'importar' ? (
+                <FileSpreadsheet className="w-6 h-6 text-[#d8f3dc]" />
+              ) : (
+                <Sprout className="w-6 h-6 text-[#d8f3dc]" />
+              )}
             </div>
             <div>
               <h2 className="text-xl font-bold">
-                {editingAmostra ? `Editar Amostra (${editingAmostra.protocolo})` : 'Cadastro de Nova Amostra'}
+                {editingAmostra ? `Editar Amostra (${editingAmostra.protocolo})` : 'Nova Amostragem'}
               </h2>
               <p className="text-xs text-[#b7e4c7]">
-                {editingAmostra ? 'Altere as informações do registro existente' : 'Cadastre o lote e canteiro de sementes para avaliação'}
+                {editingAmostra
+                  ? 'Altere as informações do registro existente'
+                  : mode === 'importar'
+                  ? 'Importe lotes plantados em lote via planilha Excel (.xlsx / .xls)'
+                  : 'Lançamento manual individual de lote e canteiro para leitura'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 rounded-lg text-[#b7e4c7] hover:bg-[#2d6a4f] hover:text-white transition-colors cursor-pointer"
           >
@@ -112,7 +143,49 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
+        {/* Seletor Lançamento Manual vs Importar Excel */}
+        {!editingAmostra && (
+          <div className="px-6 pt-4 pb-0 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+            <button
+              type="button"
+              id="tab-lancamento-manual"
+              onClick={() => setMode('manual')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-t-xl border-b-2 transition-colors cursor-pointer ${
+                mode === 'manual'
+                  ? 'bg-white text-[#1b4332] border-[#1b4332]'
+                  : 'text-gray-600 border-transparent hover:text-gray-900'
+              }`}
+            >
+              <ClipboardEdit className="w-4 h-4" />
+              <span>Lançamento Manual</span>
+            </button>
+
+            <button
+              type="button"
+              id="tab-importar-excel"
+              onClick={() => setMode('importar')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-t-xl border-b-2 transition-colors cursor-pointer ${
+                mode === 'importar'
+                  ? 'bg-white text-[#1b4332] border-[#1b4332]'
+                  : 'text-gray-600 border-transparent hover:text-gray-900'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Importar Excel (.xlsx / .xls)</span>
+            </button>
+          </div>
+        )}
+
+        {mode === 'importar' && !editingAmostra ? (
+          <ImportarAmostrasExcelPanel
+            currentUser={currentUser}
+            onCancel={onClose}
+            onImportComplete={(res) => {
+              if (onImportSuccess) onImportSuccess(res);
+            }}
+          />
+        ) : (
+        /* Form Body */
         <form onSubmit={handleSave} className="p-6 space-y-5">
           
           {errorMsg && (
@@ -251,6 +324,29 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
                 <option value="2026/2027">2026/2027</option>
                 <option value="2024/2025">2024/2025</option>
               </select>
+            </div>
+
+            {/* Canteiro / Localização */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Canteiro / Localização
+              </label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 text-[#2d6a4f] absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  list="canteiros-sugeridos-manual"
+                  value={canteiro}
+                  onChange={(e) => setCanteiro(e.target.value)}
+                  placeholder="Ex: Canteiro A-01"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-9 pr-3 py-2 text-sm font-semibold text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2d6a4f]"
+                />
+                <datalist id="canteiros-sugeridos-manual">
+                  {existingCanteiros.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </div>
             </div>
 
             {/* Data de Lançamento da Amostra (Semeadura) */}
@@ -422,6 +518,7 @@ export const NovaAmostraModal: React.FC<NovaAmostraModalProps> = ({
           </div>
 
         </form>
+        )}
 
       </div>
     </div>
